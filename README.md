@@ -68,14 +68,7 @@ npm link
 
 #### 2. Configure Environment Variables
 
-From your Shopify Partner app settings, copy the credentials and set:
-
-```bash
-export SHOPIFY_CLIENT_ID="your-actual-client-id-from-partner-dashboard"
-export SHOPIFY_CLIENT_SECRET="your-actual-client-secret-from-partner-dashboard"
-```
-
-Or create a `.env` file in the project root:
+Create a `.env` file in the project root:
 
 ```
 SHOPIFY_CLIENT_ID=your-actual-client-id-from-partner-dashboard
