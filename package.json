@@ -1,0 +1,31 @@
+{
+  "name": "shopify-admin-cli",
+  "version": "1.0.0",
+  "description": "Comprehensive CLI for Shopify store asset management with GitHub integration",
+  "main": "dist/index.js",
+  "bin": {
+    "shopify-admin": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "shopify",
+    "cli",
+    "assets",
+    "github",
+    "gitops"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.3.0"
+  }
+}
