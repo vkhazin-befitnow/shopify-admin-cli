@@ -1,3 +1,7 @@
+// Load environment variables from .env file
+import { config } from 'dotenv';
+config();
+
 // Environment variables - centralized access point
 function getRequiredEnvVar(name: string): string {
   const value = process.env[name];

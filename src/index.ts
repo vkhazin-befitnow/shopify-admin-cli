@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { helpCommand } from './commands/help';
-import { authLoginCommand } from './commands/auth';
+import { authLoginCommand, authListCommand, authStatusCommand } from './commands/auth';
 
 const program = new Command();
 
@@ -24,9 +24,26 @@ const authCommand = program
 
 authCommand
   .command('login')
-  .description('Authenticate with Shopify using OAuth 2.0')
-  .action(() => {
-    authLoginCommand();
+  .description('Authenticate with Shopify using private app credentials')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await authLoginCommand(options);
+  });
+
+authCommand
+  .command('list')
+  .description('List all authenticated stores')
+  .action(async () => {
+    await authListCommand();
+  });
+
+authCommand
+  .command('status')
+  .description('Check authentication status for a store')
+  .requiredOption('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .action(async (options) => {
+    await authStatusCommand(options.site);
   });
 
 // Show help by default if no command provided
