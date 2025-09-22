@@ -1,75 +1,133 @@
-# Shopify Admin CLI Implementation Strategy
+# Shopify Admin CLI Architecture Blueprint
 
-## Programming Language
+## Vision
 
-Node.js with TypeScript for type safety and better developer experience
+A comprehensive CLI tool for Shopify store asset management with GitHub integration, enabling GitOps workflows for store configuration and content management while protecting customer PII.
 
-## CLI Structure
+## Technology Stack
+
+- Runtime: Node.js with TypeScript
+- CLI Framework: Commander.js for command parsing
+- API Client: Shopify Admin API (REST/GraphQL)
+- Storage: Local file system with JSON configuration
+
+## Code Structure
 
 ```
-src/
-├── commands/
-│   ├── auth.ts
-│   ├── pull.ts
-│   └── push.ts
-├── lib/
-│   ├── shopify-api.ts
-│   ├── theme-manager.ts
-│   └── config.ts
-└── index.ts
+shopify-admin-cli/
+├── package.json                 # Project dependencies and scripts
+├── tsconfig.json               # TypeScript configuration
+├── README.md                   # Project overview and quick start
+├── .github/
+│   └── copilot-instructions.md # GitHub Copilot style guidelines
+├── docs/
+│   ├── blueprint.md            # Architecture and design documentation
+│   ├── user-guide.md          # Comprehensive user documentation
+│   └── README.md              # Documentation index
+├── src/
+│   ├── index.ts               # Main CLI entry point and command routing
+│   ├── settings.ts            # Configuration management
+│   ├── commands/
+│   │   ├── auth.ts            # Authentication commands (validate, status)
+│   │   └── help.ts            # Help and documentation commands
+│   └── lib/
+│       └── auth.ts            # Authentication utilities and API clients
+├── tests/
+│   ├── auth.test.ts           # Authentication functionality tests
+│   └── README.md              # Testing documentation
+└── theme/                     # Theme-related assets and templates
 ```
 
-## Top Level Commands
+### Key Components
 
-### `shopify-admin auth`
+#### Entry Point (src/index.ts)
 
-- Configure store credentials
-- Validate API access
+- Command-line argument parsing with Commander.js
+- Command routing and global error handling
+- Environment variable configuration
 
-### `shopify-admin pull`
+#### Commands (src/commands/)
 
-- Pull store assets with selective filtering
-- Validate against official CLI output for themes
-- Default: pulls all non-PII assets (themes, products, collections, pages, blogs, redirects, metafields, files)
-- Options: 
-  - `--store` - Target store URL
-  - `--output-dir` - Local directory path
-  - `--assets themes,products,collections` - Asset types to include (overrides default)
+- Modular command implementations
+- Consistent parameter handling and validation
+- Standardized output formatting
 
-### `shopify-admin push`
+#### Library (src/lib/)
 
-- Push assets to target store with selective filtering
-- Options:
-  - `--store` - Target store URL  
-  - `--source-dir` - Local directory path
-  - `--assets themes,products,collections` - Asset types to push
+- Reusable utility functions
+- API client implementations
+- Authentication and credential management
 
-## Asset Types
+#### Configuration (src/settings.ts)
 
-### Available Assets
+- Environment variable management
+- Default values and validation
+- Configuration precedence handling
 
-- `themes` - Theme files and assets
-- `products` - Product data and images
-- `collections` - Collection definitions
-- `pages` - Static pages content
-- `blogs` - Blog posts and articles
-- `redirects` - URL redirects
-- `metafields` - Custom metadata
-- `files` - Uploaded files and documents
+## High-Level Architecture
 
-### Excluded by Default (PII Data)
+### Core Principles
 
-- `customers` - Customer personal information
-- `orders` - Order history and details
-- `analytics` - Store analytics data
-- `payments` - Payment information
-- `shipping` - Shipping addresses
+- GitOps-First: All store assets managed as code in version control
+- PII Protection: Exclude customer data, orders, and personal information
+- Selective Sync: Granular control over which assets to manage
+- Multi-Store: Support for multiple Shopify stores in single workflow
 
-## Core Implementation
+### Authentication Strategy
 
-### Authentication
+- Private App Model: Uses Shopify private apps with Admin API access tokens
+- Token-Based: Simple bearer token authentication (no OAuth complexity)
+- Stateless Design: No credential persistence, uses environment variables and command-line parameters
+- Environment Integration: Support for CI/CD and local development workflows
 
-- Store API credentials in config file
-- Use Shopify Admin API with private app tokens
+### Asset Management Scope
 
+#### Included Assets (GitOps-Suitable)
 
+- Store configuration and settings
+- Theme files and customizations
+- Product catalog structure
+- Content (pages, blogs, navigation)
+- Custom scripts and integrations
+
+#### Excluded Assets (PII/Operational)
+
+- Customer data and profiles
+- Order history and transactions
+- Payment and shipping information
+- Analytics and performance data
+- Inventory levels and operational metrics
+
+## Command Structure
+
+### Current Implementation
+
+- `auth validate` - Validate store credentials and display shop information
+- `help` - Documentation and usage guidance
+
+### Planned Extensions
+
+- `pull` - Download store assets to local repository
+- `push` - Upload local changes to store
+- `diff` - Compare local and remote state
+- `sync` - Bidirectional synchronization with conflict resolution
+
+## Integration Points
+
+### Version Control
+
+- Git-native workflow with meaningful commit messages
+- Branch-based development for store changes
+- Pull request reviews for store modifications
+
+### CI/CD Pipeline
+
+- Automated deployment of approved changes
+- Environment promotion (dev → staging → production)
+- Rollback capabilities for failed deployments
+
+### Development Workflow
+
+- Local development environment setup
+- Preview deployments for testing changes
+- Collaborative store management across teams

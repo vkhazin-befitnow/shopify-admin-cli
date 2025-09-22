@@ -8,10 +8,9 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "ts-node src/index.ts",
-    "start": "node dist/index.js",
-    "test": "npm run build && node dist/tests/auth.test.js",
-    "test:dev": "ts-node tests/auth.test.ts"
+    "test": "ts-node tests/auth.test.ts",
+    "test:auth": "ts-node tests/auth.test.ts",
+    "dev": "ts-node src/index.ts"
   },
   "keywords": [
     "shopify",

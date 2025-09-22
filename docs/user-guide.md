@@ -2,139 +2,89 @@
 
 ## Overview
 
-The Shopify Admin CLI is a comprehensive command-line tool for Shopify store asset management with GitHub integration. It provides access to all store assets that can be downloaded and persisted in a git repository.
+A command-line tool for Shopify store management. Supports both interactive use and CI/CD pipelines with stateless authentication.
 
-This CLI is designed for **Shopify Partners and developers only**.
+## Quick Start
 
-## Usage
+### 1. Create Private App
 
+1. In your Shopify admin, go to Settings > Apps and sales channels > Develop apps
+2. Create a new app with required scopes (see below)
+3. Install the app and copy the access token (starts with `shpat_`)
+
+### 2. Set Credentials
+
+Choose one method:
+
+**Environment variables** (recommended):
 ```bash
-shopify-admin [command] [options]
+export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
+export SHOPIFY_ACCESS_TOKEN="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-## Available Commands
+**CLI arguments** (overrides environment):
+```bash
+shopify-admin auth validate --site your-store.myshopify.com --access-token shpat_xxxxx
+```
+
+### 3. Install CLI
+
+```bash
+git clone https://github.com/vkhazin-befitnow/shopify-admin-cli.git
+cd shopify-admin-cli
+npm install && npm run build && npm link
+```
+
+## Commands
 
 ### help
-Display this user guide.
-
+Show the user guide
 ```bash
 shopify-admin help
 ```
 
-### Authentication
-
-#### auth login
-Authenticate with a specific Shopify store using private app credentials.
-
-**Environment Variables (Recommended)**
+### auth validate
+Validate credentials and display store information
 ```bash
-export SHOPIFY_STORE_DOMAIN="mystore.myshopify.com"
-export SHOPIFY_ACCESS_TOKEN="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-shopify-admin auth login
+shopify-admin auth validate
 ```
 
-**Interactive Mode**
-```bash
-shopify-admin auth login --site mystore.myshopify.com --access-token shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
+## Required API Scopes
 
-**Requirements:**
-- Create a private app in your Shopify store admin (see [README.md](../README.md) for detailed setup)
-- Install the app and copy the Admin API access token (starts with `shpat_`)
-- Credentials are securely saved to `./.shopify-admin-cli/{store-name}` for future use
-- Each store requires separate authentication
+Configure these scopes in your private app:
 
-#### auth list
-List all authenticated stores.
+**Core Content & Assets**
+- `read_files`, `write_files`
+- `read_content`, `write_content`
+- `read_themes`, `write_themes`, `write_theme_code`
 
-```bash
-shopify-admin auth list
-```
+**Products & Collections**
+- `read_products`, `write_products`
 
-#### auth status
-Check authentication status for a specific store.
+**Store Configuration**
+- `read_online_store_navigation`, `write_online_store_navigation`
+- `read_online_store_pages`, `write_online_store_pages`
+- `read_script_tags`, `write_script_tags`
+- `read_locales`, `write_locales`
 
-```bash
-shopify-admin auth status --site mystore.myshopify.com
-```
-
-## Setup
-
-For detailed setup instructions including Shopify private app creation and environment variable configuration, see the [README.md](../README.md) in the project root.
-
-## Getting Started
-
-1. Set up your environment variables (see [README.md](../README.md) for setup instructions)
-2. Run `shopify-admin auth login` to authenticate with a store
-3. Use `shopify-admin auth list` to see authenticated stores
-4. Use `shopify-admin help` to see available commands
-
-## Authentication Methods
-
-### Environment Variables (Recommended for CI/CD)
-```bash
-export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
-export SHOPIFY_ACCESS_TOKEN="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-source ./.env/dev.sh  # if using a file
-shopify-admin auth login
-```
-
-### Command Line Parameters
-```bash
-shopify-admin auth login --site your-store.myshopify.com --access-token shpat_xxxxx
-```
-
-### Interactive Prompts
-```bash
-shopify-admin auth login
-# You'll be prompted for store domain and access token
-```
-
-## Multiple Stores
-
-To work with multiple stores, use prefixed environment variables:
-```bash
-export SHOPIFY_STORE1_DOMAIN="store1.myshopify.com"
-export SHOPIFY_STORE1_ACCESS_TOKEN="shpat_store1_token"
-export SHOPIFY_STORE2_DOMAIN="store2.myshopify.com"
-export SHOPIFY_STORE2_ACCESS_TOKEN="shpat_store2_token"
-```
+**Advanced Features**
+- `read_legal_policies`, `write_legal_policies`
+- `read_metaobject_definitions`, `write_metaobject_definitions`
+- `read_metaobjects`, `write_metaobjects`
 
 ## Troubleshooting
 
-### Authentication Issues
+**Authentication Issues**
+- Verify access token starts with `shpat_`
+- Ensure private app is installed
+- Check required scopes are enabled
+- Use format: `your-store.myshopify.com`
 
-**"Invalid credentials or API access denied"**
-- Verify your access token starts with `shpat_`
-- Ensure the private app is installed in your Shopify store
-- Check that required API scopes are enabled (see [README.md](../README.md))
-- Verify the store domain format: `your-store.myshopify.com`
-
-**"No authenticated stores found"**
-- Run `shopify-admin auth login` first
-- Check if environment variables are set correctly
-- Verify credentials files exist in `./.shopify-admin-cli/`
-
-### General Tips
-
-**Environment Variables Not Loading**
+**Environment Variables**
 ```bash
-# Make sure to source your environment file
+# Check current values
+echo $SHOPIFY_STORE_DOMAIN $SHOPIFY_ACCESS_TOKEN
+
+# Re-export if needed
 source ./.env/dev.sh
-# Or export variables manually
-export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
-export SHOPIFY_ACCESS_TOKEN="shpat_xxxxx"
-```
-
-**Check Authentication Status**
-```bash
-shopify-admin auth list     # See all authenticated stores
-shopify-admin auth status --site your-store.myshopify.com  # Check specific store
-```
-
-**Reset Authentication**
-```bash
-# Remove stored credentials and re-authenticate
-rm -rf ./.shopify-admin-cli/
-shopify-admin auth login
 ```
