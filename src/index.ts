@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { authValidateCommand } from './commands/auth';
-import { themesListCommand } from './commands/themes';
+import { themesListCommand, themesPullCommand } from './commands/themes';
 
 const program = new Command();
 
@@ -23,7 +23,7 @@ authCommand
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
-    await authValidateCommand(options);
+    await authValidateCommand(options.site, options.accessToken);
   });
 
 const themesCommand = program
@@ -38,6 +38,22 @@ themesCommand
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     await themesListCommand(options);
+  });
+
+themesCommand
+  .command('pull')
+  .description('Download a theme to local directory')
+  .requiredOption('--theme-name <name>', 'Theme name to download (e.g., "Dawn", "Horizon")')
+  .requiredOption('--output <path>', 'Output directory path')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await themesPullCommand({
+      themeName: options.themeName,
+      output: options.output,
+      site: options.site,
+      accessToken: options.accessToken
+    });
   });
 
 // Show help by default if no command provided

@@ -49,6 +49,30 @@ Validate credentials and display store information
 shopify-admin auth validate
 ```
 
+### themes list
+List all themes in the store with details
+```bash
+shopify-admin themes list
+```
+
+### themes pull
+Download a theme to local directory
+```bash
+shopify-admin themes pull --theme-name "Horizon" --output ./themes
+```
+
+The theme will be downloaded to: `./themes/themes/Horizon/`
+
+**Examples:**
+```bash
+# Download the main theme
+shopify-admin themes pull --theme-name "Dawn" --output ./backup
+
+# With explicit credentials
+shopify-admin themes pull --theme-name "Horizon" --output ./themes \
+  --site your-store.myshopify.com --access-token shpat_xxxxx
+```
+
 ## Required API Scopes
 
 Configure these scopes in your private app:

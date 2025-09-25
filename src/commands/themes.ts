@@ -1,7 +1,8 @@
-interface EnvStoreConfig {
-    site: string;
-    accessToken: string;
-}
+import * as fs from 'fs';
+import * as path from 'path';
+import * as yaml from 'js-yaml';
+import { RetryUtility } from '../utils/retry';
+import { SHOPIFY_API } from '../settings';
 
 interface Theme {
     id: number;
@@ -18,21 +19,33 @@ interface ThemeListResult {
     themes: Theme[];
 }
 
+interface Asset {
+    key: string;
+    public_url?: string;
+    created_at: string;
+    updated_at: string;
+    content_type: string;
+    size: number;
+    checksum?: string;
+    theme_id: number;
+    attachment?: string;
+    value?: string;
+}
+
+interface AssetListResult {
+    assets: Asset[];
+}
+
 export class ShopifyThemes {
     constructor() { }
 
-    /**
-     * List all themes for the store
-     */
     async list(options?: {
         site?: string;
         accessToken?: string;
     }): Promise<ThemeListResult> {
-        // Get credentials using priority: 1. CLI args, 2. env vars, 3. error
         let site = options?.site;
         let accessToken = options?.accessToken;
 
-        // If no explicit parameters provided, try environment variables
         if (!site || !accessToken) {
             const envCredentials = this.getCredentialsFromEnv();
             if (envCredentials) {
@@ -41,7 +54,6 @@ export class ShopifyThemes {
             }
         }
 
-        // Error if credentials are still missing
         if (!site || !accessToken) {
             throw new Error('Missing credentials. Provide either:\n' +
                 '1. CLI arguments: --site <domain> --access-token <token>\n' +
@@ -51,14 +63,48 @@ export class ShopifyThemes {
         return await this.fetchThemes(site, accessToken);
     }
 
-    /**
-     * Fetch themes using REST API
-     */
-    private async fetchThemes(site: string, accessToken: string): Promise<ThemeListResult> {
-        const apiVersion = '2025-01';
-        const url = `https://${site}/admin/api/${apiVersion}/themes.json`;
+    getCredentialsFromEnv(): { site: string; accessToken: string } | null {
+        const site = process.env.SHOPIFY_STORE_DOMAIN;
+        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
 
-        try {
+        if (site && accessToken) {
+            return { site, accessToken };
+        }
+
+        return null;
+    }
+
+    async pull(themeName: string, outputPath: string, site: string, accessToken: string, maxAssets?: number): Promise<void> {
+        // First, get all themes to find the one with matching name
+        const themesList = await this.fetchThemes(site, accessToken);
+        const theme = themesList.themes.find(t => t.name.toLowerCase() === themeName.toLowerCase());
+
+        if (!theme) {
+            const availableThemes = themesList.themes.map(t => `"${t.name}"`).join(', ');
+            throw new Error(`Theme "${themeName}" not found. Available themes: ${availableThemes}`);
+        }
+
+        const finalOutputPath = this.prepareOutputDirectory(outputPath, theme.name);
+        console.log(`Pulling theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
+
+        let assets = await this.fetchThemeAssets(site, accessToken, theme.id);
+
+        if (maxAssets && maxAssets > 0) {
+            assets = assets.slice(0, maxAssets);
+            console.log(`Limited to first ${assets.length} assets for testing`);
+        } else {
+            console.log(`Found ${assets.length} assets to download`);
+        }
+
+        await this.downloadAssets(site, accessToken, theme.id, assets, finalOutputPath);
+
+        console.log(`Successfully pulled theme "${theme.name}" to ${finalOutputPath}`);
+    }
+
+    private async fetchThemes(site: string, accessToken: string): Promise<ThemeListResult> {
+        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEMES}`;
+
+        return await RetryUtility.withRetry(async () => {
             const response = await fetch(url, {
                 method: 'GET',
                 headers: {
@@ -87,50 +133,119 @@ export class ShopifyThemes {
 
             return { themes: data.themes };
 
-        } catch (error: any) {
-            if (error.message.includes('fetch')) {
-                throw new Error(`Network error: ${error.message}`);
-            }
-            throw error;
-        }
+        }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private getCredentialsFromEnv(): EnvStoreConfig | null {
-        const site = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+    private prepareOutputDirectory(outputPath: string, themeName: string): string {
+        let finalPath = outputPath;
 
-        if (site && accessToken) {
-            return { site, accessToken };
+        if (!outputPath.endsWith('themes')) {
+            finalPath = path.join(outputPath, 'themes');
         }
 
-        return null;
+        const themeFolder = themeName.replace(/[^a-zA-Z0-9\-_]/g, '_');
+        finalPath = path.join(finalPath, themeFolder);
+
+        fs.mkdirSync(finalPath, { recursive: true });
+
+        return finalPath;
     }
 
-    /**
-     * Format themes data as YAML
-     */
-    formatAsYaml(themes: Theme[]): string {
-        if (themes.length === 0) {
-            return 'themes: []';
-        }
+    private async fetchThemeAssets(site: string, accessToken: string, themeId: number): Promise<Asset[]> {
+        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEME_ASSETS(themeId)}`;
 
-        let yaml = 'themes:\n';
-        
-        themes.forEach(theme => {
-            yaml += `  - id: ${theme.id}\n`;
-            yaml += `    name: "${theme.name}"\n`;
-            yaml += `    role: ${theme.role}\n`;
-            yaml += `    previewable: ${theme.previewable}\n`;
-            yaml += `    processing: ${theme.processing}\n`;
-            yaml += `    created_at: "${theme.created_at}"\n`;
-            yaml += `    updated_at: "${theme.updated_at}"\n`;
-            
-            if (theme.theme_store_id) {
-                yaml += `    theme_store_id: ${theme.theme_store_id}\n`;
+        return await RetryUtility.withRetry(async () => {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'X-Shopify-Access-Token': accessToken,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.status === 401) {
+                throw new Error('Unauthorized: invalid token or store domain');
             }
+
+            if (response.status === 403) {
+                throw new Error('Forbidden: missing required permissions. Ensure your app has read_themes scope');
+            }
+
+            if (!response.ok) {
+                throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+            }
+
+            const data = await response.json();
+            return data.assets || [];
+
+        }, SHOPIFY_API.RETRY_CONFIG);
+    }
+
+    private async downloadAssets(site: string, accessToken: string, themeId: number, assets: Asset[], outputPath: string): Promise<void> {
+        const directories = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
+        directories.forEach(dir => {
+            fs.mkdirSync(path.join(outputPath, dir), { recursive: true });
         });
 
-        return yaml;
+        const rateLimitedFetch = RetryUtility.rateLimited(
+            (key: string) => this.fetchAssetContent(site, accessToken, themeId, key),
+            RetryUtility.RATE_LIMITS.SHOPIFY_API
+        );
+
+        for (let i = 0; i < assets.length; i++) {
+            const asset = assets[i];
+            console.log(`Downloading (${i + 1}/${assets.length}): ${asset.key}`);
+
+            try {
+                const content = await rateLimitedFetch(asset.key);
+                const filePath = path.join(outputPath, asset.key);
+
+                const dir = path.dirname(filePath);
+                fs.mkdirSync(dir, { recursive: true });
+
+                if (asset.attachment) {
+                    fs.writeFileSync(filePath, Buffer.from(asset.attachment, 'base64'));
+                } else if (content) {
+                    fs.writeFileSync(filePath, content, 'utf8');
+                }
+
+            } catch (error: any) {
+                console.warn(`Failed to download ${asset.key}: ${error.message}`);
+            }
+        }
+    }
+
+    private async fetchAssetContent(site: string, accessToken: string, themeId: number, assetKey: string): Promise<string> {
+        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEME_ASSET(themeId, assetKey)}`;
+
+        return await RetryUtility.withRetry(async () => {
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'X-Shopify-Access-Token': accessToken,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+            }
+
+            const data = await response.json();
+            const asset = data.asset;
+
+            return asset.value || asset.attachment || '';
+
+        }, SHOPIFY_API.RETRY_CONFIG);
+    }
+
+    formatAsYaml(themes: Theme[]): string {
+        return yaml.dump({ themes }, {
+            indent: 2,
+            lineWidth: -1,
+            noRefs: true,
+            sortKeys: false
+        });
     }
 }
 
@@ -148,12 +263,45 @@ export async function themesListCommand(options: {
             return;
         }
 
-        // Output as YAML format
         const yaml = themes.formatAsYaml(result.themes);
         console.log(yaml);
 
     } catch (error: any) {
         console.error(`Failed to list themes: ${error.message}`);
+        process.exit(1);
+    }
+}
+
+export async function themesPullCommand(options: {
+    themeName: string;
+    output: string;
+    site?: string;
+    accessToken?: string;
+}): Promise<void> {
+    const themes = new ShopifyThemes();
+
+    try {
+        let site = options.site;
+        let accessToken = options.accessToken;
+
+        if (!site || !accessToken) {
+            const envCredentials = themes.getCredentialsFromEnv();
+            if (envCredentials) {
+                site = site || envCredentials.site;
+                accessToken = accessToken || envCredentials.accessToken;
+            }
+        }
+
+        if (!site || !accessToken) {
+            throw new Error('Missing credentials. Provide either:\n' +
+                '1. CLI arguments: --site <domain> --access-token <token>\n' +
+                '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
+        }
+
+        await themes.pull(options.themeName, options.output, site, accessToken);
+
+    } catch (error: any) {
+        console.error(`Failed to pull theme: ${error.message}`);
         process.exit(1);
     }
 }

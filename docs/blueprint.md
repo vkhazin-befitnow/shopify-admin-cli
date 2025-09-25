@@ -9,19 +9,20 @@ A comprehensive CLI tool for Shopify store asset management with GitHub integrat
 - Runtime: Node.js with TypeScript
 - CLI Framework: Commander.js for command parsing
 - API Client: Shopify Admin API (REST/GraphQL)
-- Storage: Local file system with JSON configuration
+- Storage: Local file system
+- Source Control to keep history of changes
 
 ## Code Structure
 
 ```
 shopify-admin-cli/
-├── package.json                 # Project dependencies and scripts
-├── tsconfig.json               # TypeScript configuration
-├── README.md                   # Project overview and quick start
-├── .github/
-│   └── copilot-instructions.md # GitHub Copilot style guidelines
+├── package.json               # Project dependencies and scripts
+├── package-lock.json          # Dependency lock file
+├── tsconfig.json              # TypeScript configuration
+├── README.md                  # Project overview and quick start
+├── .gitignore                 # Git ignore patterns
 ├── docs/
-│   ├── blueprint.md            # Architecture and design documentation
+│   ├── blueprint.md           # Architecture and design documentation
 │   ├── user-guide.md          # Comprehensive user documentation
 │   └── README.md              # Documentation index
 ├── src/
@@ -29,13 +30,17 @@ shopify-admin-cli/
 │   ├── settings.ts            # Configuration management
 │   ├── commands/
 │   │   ├── auth.ts            # Authentication commands (validate, status)
-│   │   └── help.ts            # Help and documentation commands
-│   └── lib/
-│       └── auth.ts            # Authentication utilities and API clients
+│   │   └── themes.ts          # Theme management commands (list, pull)
+│   ├── lib/
+│   │   └── auth.ts            # Authentication utilities and API client
+│   └── utils/
+│       └── retry.ts           # Retry logic for API calls
 ├── tests/
 │   ├── auth.test.ts           # Authentication functionality tests
-│   └── README.md              # Testing documentation
-└── theme/                     # Theme-related assets and templates
+│   ├── retry.test.ts          # Retry utility tests
+│   ├── themes.test.ts         # Theme command tests
+│   ├── README.md              # Testing documentation
+│   └── test-run/              # Test execution artifacts
 ```
 
 ### Key Components
@@ -51,12 +56,6 @@ shopify-admin-cli/
 - Modular command implementations
 - Consistent parameter handling and validation
 - Standardized output formatting
-
-#### Library (src/lib/)
-
-- Reusable utility functions
-- API client implementations
-- Authentication and credential management
 
 #### Configuration (src/settings.ts)
 
@@ -100,17 +99,14 @@ shopify-admin-cli/
 
 ## Command Structure
 
-### Current Implementation
+The CLI follows a hierarchical command structure with grouped functionality for different asset types and operations. For detailed command usage, parameters, and examples, see the [User Guide](user-guide.md).
 
-- `auth validate` - Validate store credentials and display shop information
-- `help` - Documentation and usage guidance
+### Design Principles
 
-### Planned Extensions
-
-- `pull` - Download store assets to local repository
-- `push` - Upload local changes to store
-- `diff` - Compare local and remote state
-- `sync` - Bidirectional synchronization with conflict resolution
+- Consistent command patterns across all asset types
+- Standardized output format: YAML
+- Comprehensive error handling and validation
+- Support for both interactive and CI/CD usage
 
 ## Integration Points
 

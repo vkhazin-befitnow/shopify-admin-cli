@@ -47,10 +47,7 @@ describe('Shopify Authentication', () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
 
-        const result = await auth.validate({
-            site: creds.site,
-            accessToken: creds.accessToken
-        });
+        const result = await auth.validate(creds.site, creds.accessToken);
 
         assert.ok(result.shop, 'Shop information should be returned');
         assert.ok(result.shop.name, 'Shop name should be present');
@@ -59,10 +56,7 @@ describe('Shopify Authentication', () => {
     test('Invalid Credentials Handling', async () => {
         await assert.rejects(
             async () => {
-                await auth.validate({
-                    site: 'fake-store.myshopify.com',
-                    accessToken: 'shpat_fake_token_12345'
-                });
+                await auth.validate('fake-store.myshopify.com', 'shpat_fake_token_12345');
             },
             {
                 message: /Unauthorized|invalid token|GraphQL request failed: 404|Not Found/
@@ -75,10 +69,7 @@ describe('Shopify Authentication', () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
 
-        const result = await auth.validate({
-            site: creds.site,
-            accessToken: creds.accessToken
-        });
+        const result = await auth.validate(creds.site, creds.accessToken);
 
         assert.ok(result.scopes, 'Scopes should always be returned');
         assert.ok(Array.isArray(result.scopes), 'Scopes should be an array');

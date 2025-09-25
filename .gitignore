@@ -46,5 +46,8 @@ coverage/
 tmp/
 temp/
 
+# Test data directory
+tests/test-run/
+
 # Shopify CLI config (contains sensitive tokens)
 .shopify-admin-cli/

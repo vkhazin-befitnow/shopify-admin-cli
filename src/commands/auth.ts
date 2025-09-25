@@ -1,8 +1,3 @@
-interface EnvStoreConfig {
-  site: string;
-  accessToken: string;
-}
-
 interface ValidationResult {
   shop: {
     name: string;
@@ -18,33 +13,39 @@ export class ShopifyAuth {
   /**
    * Validate credentials and list granted scopes using GraphQL
    */
-  async validate(options?: {
-    site?: string;
-    accessToken?: string;
-  }): Promise<ValidationResult> {
-
+  async validate(site?: string, accessToken?: string): Promise<ValidationResult> {
     // Get credentials using priority: 1. CLI args, 2. env vars, 3. error
-    let site = options?.site;
-    let accessToken = options?.accessToken;
+    let finalSite = site;
+    let finalAccessToken = accessToken;
 
     // If no explicit parameters provided, try environment variables
-    if (!site || !accessToken) {
+    if (!finalSite || !finalAccessToken) {
       const envCredentials = this.getCredentialsFromEnv();
       if (envCredentials) {
-        site = site || envCredentials.site;
-        accessToken = accessToken || envCredentials.accessToken;
+        finalSite = finalSite || envCredentials.site;
+        finalAccessToken = finalAccessToken || envCredentials.accessToken;
       }
     }
 
     // Error if credentials are still missing
-    if (!site || !accessToken) {
+    if (!finalSite || !finalAccessToken) {
       throw new Error('Missing credentials. Provide either:\n' +
         '1. CLI arguments: --site <domain> --access-token <token>\n' +
         '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
     }
 
-    // Validate using GraphQL to get both shop info and scopes
-    return await this.validateWithGraphQL(site, accessToken);
+    return await this.validateWithGraphQL(finalSite, finalAccessToken);
+  }
+
+  private getCredentialsFromEnv(): { site: string; accessToken: string } | null {
+    const site = process.env.SHOPIFY_STORE_DOMAIN;
+    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+
+    if (site && accessToken) {
+      return { site, accessToken };
+    }
+
+    return null;
   }
 
   /**
@@ -116,27 +117,13 @@ export class ShopifyAuth {
       throw error;
     }
   }
-
-  private getCredentialsFromEnv(): EnvStoreConfig | null {
-    const site = process.env.SHOPIFY_STORE_DOMAIN;
-    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-
-    if (site && accessToken) {
-      return { site, accessToken };
-    }
-
-    return null;
-  }
 }
 
-export async function authValidateCommand(options: {
-  site?: string;
-  accessToken?: string;
-}): Promise<void> {
+export async function authValidateCommand(site?: string, accessToken?: string): Promise<void> {
   const auth = new ShopifyAuth();
 
   try {
-    const result = await auth.validate(options);
+    const result = await auth.validate(site, accessToken);
 
     console.log(`Valid credentials for: ${result.shop.name}`);
     console.log(`Store domain: ${result.shop.domain}`);
