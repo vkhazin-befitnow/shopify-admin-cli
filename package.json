@@ -8,8 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "ts-node tests/auth.test.ts",
-    "test:auth": "ts-node tests/auth.test.ts",
+    "test": "find tests -name '*.test.ts' -exec ts-node {} \\;",
     "dev": "ts-node src/index.ts"
   },
   "keywords": [

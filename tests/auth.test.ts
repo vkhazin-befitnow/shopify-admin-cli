@@ -7,7 +7,7 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
-import { ShopifyAuth } from '../src/lib/auth';
+import { ShopifyAuth } from '../src/commands/auth';
 
 // Helper functions
 function hasCredentials(): boolean {
