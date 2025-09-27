@@ -58,20 +58,70 @@ shopify-admin themes list
 ### themes pull
 Download a theme to local directory
 ```bash
-shopify-admin themes pull --theme-name "Horizon" --output ./themes
+shopify-admin themes pull --name "Horizon" --output ./themes
 ```
 
 The theme will be downloaded to: `./themes/themes/Horizon/`
 
+### themes push
+Upload local theme files to store
+```bash
+# Safe default: only upload/update files (no deletions)
+shopify-admin themes push --name "Horizon" --input ./themes
+
+# Mirror mode: make remote exactly match local (DESTRUCTIVE)
+shopify-admin themes push --name "Horizon" --input ./themes --mirror
+
+# Preview changes without applying them
+shopify-admin themes push --name "Horizon" --input ./themes --dry-run
+shopify-admin themes push --name "Horizon" --input ./themes --mirror --dry-run
+```
+
+**Push Modes:**
+- **Default**: Only uploads new files and updates existing files. Remote files not present locally are left untouched.
+- **Mirror mode** (`--mirror`): Makes the remote theme exactly match your local files. **This will delete remote files that don't exist locally.**
+
 **Examples:**
 ```bash
-# Download the main theme
-shopify-admin themes pull --theme-name "Dawn" --output ./backup
+# Safe upload - won't delete anything
+shopify-admin themes push --name "Dawn" --input ./backup
+
+# Mirror local state exactly (destructive)
+shopify-admin themes push --name "Dawn" --input ./themes --mirror
+
+# Always preview first with dry-run
+shopify-admin themes push --name "Production Theme" --input ./themes --mirror --dry-run
 
 # With explicit credentials
-shopify-admin themes pull --theme-name "Horizon" --output ./themes \
+shopify-admin themes push --name "Horizon" --input ./themes \
   --site your-store.myshopify.com --access-token shpat_xxxxx
 ```
+
+## Safety Guidelines
+
+### Theme Push Safety
+
+**Always use `--dry-run` first** when pushing to production themes:
+```bash
+# ALWAYS preview changes first
+shopify-admin themes push --name "Live Theme" --input ./themes --mirror --dry-run
+
+# Only run actual push after reviewing the preview
+shopify-admin themes push --name "Live Theme" --input ./themes --mirror
+```
+
+**Mirror Mode Warning**
+- `--mirror` flag will **DELETE** remote files not present locally
+- This is **irreversible** - deleted theme files cannot be recovered
+- Use with extreme caution on production themes
+- Always backup themes before using mirror mode
+
+**Recommended Workflow**
+1. Pull current theme: `shopify-admin themes pull --name "Live Theme" --output ./backup`
+2. Make your changes locally
+3. Preview with dry-run: `shopify-admin themes push --name "Test Theme" --input ./themes --dry-run`
+4. Test on development theme first
+5. Use mirror mode only when intentional: `--mirror --dry-run` then `--mirror`
 
 ## Required API Scopes
 

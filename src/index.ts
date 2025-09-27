@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { authValidateCommand } from './commands/auth';
-import { themesListCommand, themesPullCommand } from './commands/themes';
+import { themesListCommand, themesPullCommand, themesPushCommand } from './commands/themes';
 
 const program = new Command();
 
@@ -43,14 +43,34 @@ themesCommand
 themesCommand
   .command('pull')
   .description('Download a theme to local directory')
-  .requiredOption('--theme-name <name>', 'Theme name to download (e.g., "Dawn", "Horizon")')
+  .requiredOption('--name <name>', 'Theme name to download (e.g., "Dawn", "Horizon")')
   .requiredOption('--output <path>', 'Output directory path')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     await themesPullCommand({
-      themeName: options.themeName,
+      themeName: options.name,
       output: options.output,
+      site: options.site,
+      accessToken: options.accessToken
+    });
+  });
+
+themesCommand
+  .command('push')
+  .description('Upload local theme files to store')
+  .requiredOption('--name <name>', 'Theme name to upload to (e.g., "Dawn", "Horizon")')
+  .requiredOption('--input <path>', 'Input directory path containing theme files')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await themesPushCommand({
+      themeName: options.name,
+      input: options.input,
+      dryRun: options.dryRun || false,
+      mirror: options.mirror || false,
       site: options.site,
       accessToken: options.accessToken
     });

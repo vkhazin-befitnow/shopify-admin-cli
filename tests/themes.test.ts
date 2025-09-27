@@ -9,7 +9,7 @@ import { test, describe } from 'node:test';
 import * as assert from 'node:assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ShopifyThemes } from '../src/commands/themes';
+import { ShopifyThemes, themesListCommand, themesPullCommand, themesPushCommand } from '../src/commands/themes';
 
 // Test directory for theme pull operations
 const TEST_RUN_DIR = path.join(__dirname, 'test-run');
@@ -117,6 +117,109 @@ describe('Shopify Themes', () => {
         });
 
         assert.ok(totalFiles > 0, 'Should download at least some theme files');
+    });
+
+    test('Theme Push (Dry Run)', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        const themeName = await getTestThemeName();
+        assert.ok(themeName, 'Should have at least one theme available for testing');
+
+        // First pull a theme to have test data
+        const pullDir = path.join(TEST_RUN_DIR, 'theme-push-test');
+        await themes.pull(themeName, pullDir, creds.site, creds.accessToken, 1);
+
+        // The pulled theme is in pullDir/themes/ThemeName, but push expects the parent directory
+        // So we pass the pullDir as input path, and it will find themes/ThemeName inside it
+
+        // Test dry run (should not throw errors and should complete)
+        await assert.doesNotReject(
+            async () => {
+                await themes.push(themeName, pullDir, creds.site, creds.accessToken, true);
+            },
+            'Dry run push should not throw errors'
+        );
+    });
+
+    test('Theme Push Mirror Mode (Dry Run)', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        const themeName = await getTestThemeName();
+        assert.ok(themeName, 'Should have at least one theme available for testing');
+
+        // First pull a theme to have test data
+        const pullDir = path.join(TEST_RUN_DIR, 'theme-mirror-test');
+        await themes.pull(themeName, pullDir, creds.site, creds.accessToken, 2);
+
+        // Test mirror mode dry run - should show deletions
+        let output = '';
+        let errorOutput = '';
+        const originalLog = console.log;
+        const originalError = console.error;
+        console.log = (msg: any) => { output += msg + '\n'; };
+        console.error = (msg: any) => { errorOutput += msg + '\n'; };
+
+        try {
+            await themes.push(themeName, pullDir, creds.site, creds.accessToken, true, true);
+
+            // In mirror mode, should mention files to delete if there are any
+            assert.ok(output.includes('Mirror Mode'), 'Should indicate mirror mode is active');
+
+        } finally {
+            console.log = originalLog;
+            console.error = originalError;
+        }
+    });
+
+    test('Theme Push Non-Mirror Mode (Consistency)', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        const themeName = await getTestThemeName();
+        assert.ok(themeName, 'Should have at least one theme available for testing');
+
+        // First pull a theme to have test data
+        const pullDir = path.join(TEST_RUN_DIR, 'theme-non-mirror-test');
+        await themes.pull(themeName, pullDir, creds.site, creds.accessToken, 1);
+
+        // Test non-mirror mode dry run - should NOT show deletions
+        let output = '';
+        const originalLog = console.log;
+        console.log = (msg: any) => { output += msg + '\n'; };
+
+        try {
+            await themes.push(themeName, pullDir, creds.site, creds.accessToken, true, false);
+
+            // In non-mirror mode, should NOT mention files to delete
+            assert.ok(!output.includes('will be deleted'), 'Should not show deletions in non-mirror mode');
+            assert.ok(!output.includes('Mirror Mode'), 'Should not indicate mirror mode');
+
+        } finally {
+            console.log = originalLog;
+        }
+    });
+
+    test('Theme Push Command Functions', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        // Test list command function
+        let output = '';
+        const originalLog = console.log;
+        console.log = (msg: any) => { output += msg + '\n'; };
+
+        try {
+            await themesListCommand({
+                site: creds.site,
+                accessToken: creds.accessToken
+            });
+
+            assert.ok(output.includes('themes:'), 'List command should output YAML with themes');
+        } finally {
+            console.log = originalLog;
+        }
     });
 
     test('Invalid Theme Name', async () => {
