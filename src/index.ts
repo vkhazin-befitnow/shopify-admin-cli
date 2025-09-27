@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { authValidateCommand } from './commands/auth';
-import { themesListCommand, themesPullCommand, themesPushCommand } from './commands/themes';
+import { themesPullCommand, themesPushCommand } from './commands/themes';
 
 const program = new Command();
 
@@ -30,15 +30,6 @@ const themesCommand = program
   .command('themes')
   .description('Theme management commands')
   .addHelpCommand(false);
-
-themesCommand
-  .command('list')
-  .description('List all themes in the store')
-  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
-  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
-  .action(async (options) => {
-    await themesListCommand(options);
-  });
 
 themesCommand
   .command('pull')

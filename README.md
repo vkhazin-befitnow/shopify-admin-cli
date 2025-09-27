@@ -1,10 +1,10 @@
 # Shopify Admin CLI
 
-Comprehensive CLI for Shopify store asset management with GitHub integration.
+GitOps-friendly CLI for Shopify theme management with explicit path control.
 
 ## Overview
 
-This CLI tool provides comprehensive access to Shopify store assets for developers and Shopify Partners. It enables downloading, managing, and version controlling all store assets including themes, content, products, and configurations.
+This CLI tool provides safe, stateless access to Shopify themes for developers and teams. It focuses on theme pull and push operations with explicit directory paths, dry-run support, and mirror mode for exact synchronization.
 
 ## For Users
 
@@ -31,6 +31,22 @@ npm run dev [command]  # Development mode with ts-node
 npm run test          # Run tests
 npm run build         # Build TypeScript to JavaScript
 npm run lint          # Run linting
+```
+
+### Environment Configuration
+
+For development and testing, create `.env/dev.sh` with:
+
+```bash
+export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
+export SHOPIFY_ACCESS_TOKEN="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export SHOPIFY_TEST_THEME_NAME="TestThemeName"
+```
+
+Source the file before running tests:
+```bash
+source ./.env/dev.sh
+npm run test
 ```
 
 ### Project Structure

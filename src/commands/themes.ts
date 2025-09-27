@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as yaml from 'js-yaml';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
@@ -39,30 +38,6 @@ interface AssetListResult {
 
 export class ShopifyThemes {
     constructor() { }
-
-    async list(options?: {
-        site?: string;
-        accessToken?: string;
-    }): Promise<ThemeListResult> {
-        let site = options?.site;
-        let accessToken = options?.accessToken;
-
-        if (!site || !accessToken) {
-            const envCredentials = this.getCredentialsFromEnv();
-            if (envCredentials) {
-                site = site || envCredentials.site;
-                accessToken = accessToken || envCredentials.accessToken;
-            }
-        }
-
-        if (!site || !accessToken) {
-            throw new Error('Missing credentials. Provide either:\n' +
-                '1. CLI arguments: --site <domain> --access-token <token>\n' +
-                '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-        }
-
-        return await this.fetchThemes(site, accessToken);
-    }
 
     getCredentialsFromEnv(): { site: string; accessToken: string } | null {
         const site = process.env.SHOPIFY_STORE_DOMAIN;
@@ -185,18 +160,9 @@ export class ShopifyThemes {
     }
 
     private prepareOutputDirectory(outputPath: string, themeName: string): string {
-        let finalPath = outputPath;
-
-        if (!outputPath.endsWith('themes')) {
-            finalPath = path.join(outputPath, 'themes');
-        }
-
-        const themeFolder = themeName.replace(/[^a-zA-Z0-9\-_]/g, '_');
-        finalPath = path.join(finalPath, themeFolder);
-
-        fs.mkdirSync(finalPath, { recursive: true });
-
-        return finalPath;
+        // Use the exact output path provided by user - no assumptions
+        fs.mkdirSync(outputPath, { recursive: true });
+        return outputPath;
     }
 
     private async fetchThemeAssets(site: string, accessToken: string, themeId: number): Promise<Asset[]> {
@@ -288,28 +254,20 @@ export class ShopifyThemes {
     }
 
     private validateThemeStructure(inputPath: string, themeName: string): string {
-        let themeFolder = inputPath;
-
-        // If inputPath contains a themes folder, look for the theme inside it
-        if (inputPath.includes('/themes/')) {
-            themeFolder = path.join(inputPath, themeName);
-        } else if (fs.existsSync(path.join(inputPath, 'themes', themeName))) {
-            themeFolder = path.join(inputPath, 'themes', themeName);
-        }
-
-        if (!fs.existsSync(themeFolder)) {
-            throw new Error(`Theme folder not found: ${themeFolder}`);
+        // Input path should point directly to a theme folder
+        if (!fs.existsSync(inputPath)) {
+            throw new Error(`Theme folder not found: ${inputPath}`);
         }
 
         // Validate that it has expected Shopify theme structure
         const expectedDirs = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
-        const missingDirs = expectedDirs.filter(dir => !fs.existsSync(path.join(themeFolder, dir)));
+        const missingDirs = expectedDirs.filter(dir => !fs.existsSync(path.join(inputPath, dir)));
 
         if (missingDirs.length > 0) {
             console.warn(`Warning: Missing expected directories: ${missingDirs.join(', ')}`);
         }
 
-        return themeFolder;
+        return inputPath;
     }
 
     private collectLocalThemeFiles(themeFolder: string): Array<{ key: string, filePath: string, isImage: boolean }> {
@@ -500,38 +458,6 @@ export class ShopifyThemes {
             }
 
         }, SHOPIFY_API.RETRY_CONFIG);
-    }
-
-    formatAsYaml(themes: Theme[]): string {
-        return yaml.dump({ themes }, {
-            indent: 2,
-            lineWidth: -1,
-            noRefs: true,
-            sortKeys: false
-        });
-    }
-}
-
-export async function themesListCommand(options: {
-    site?: string;
-    accessToken?: string;
-}): Promise<void> {
-    const themes = new ShopifyThemes();
-
-    try {
-        const result = await themes.list(options);
-
-        if (result.themes.length === 0) {
-            console.log('themes: []');
-            return;
-        }
-
-        const yaml = themes.formatAsYaml(result.themes);
-        console.log(yaml);
-
-    } catch (error: any) {
-        console.error(`Failed to list themes: ${error.message}`);
-        process.exit(1);
     }
 }
 

@@ -1,0 +1,1 @@
+- themes pull should warn in case the path is not empty
