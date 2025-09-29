@@ -30,17 +30,17 @@ shopify-admin-cli/
 │   ├── settings.ts            # Configuration management
 │   ├── commands/
 │   │   ├── auth.ts            # Authentication commands (validate, status)
-│   │   └── themes.ts          # Theme management commands (list, pull)
-│   ├── lib/
-│   │   └── auth.ts            # Authentication utilities and API client
+│   │   └── themes.ts          # Theme management commands (pull, push)
 │   └── utils/
-│       └── retry.ts           # Retry logic for API calls
+│       ├── retry.ts           # Retry logic for API calls
+│       └── dry-run.ts         # Dry-run mode utilities
 ├── tests/
 │   ├── auth.test.ts           # Authentication functionality tests
 │   ├── retry.test.ts          # Retry utility tests
 │   ├── themes.test.ts         # Theme command tests
 │   ├── README.md              # Testing documentation
 │   └── test-run/              # Test execution artifacts
+└── dist/                      # Compiled JavaScript output
 ```
 
 ### Key Components
@@ -53,8 +53,10 @@ shopify-admin-cli/
 
 #### Commands (src/commands/)
 
-- Modular command implementations
-- Consistent parameter handling and validation
+- **auth.ts**: Authentication validation and store information
+- **themes.ts**: Theme pull and push operations with mirror mode support
+- Modular command implementations with consistent parameter handling
+- Dry-run support for safe preview of operations
 - Standardized output formatting
 
 #### Configuration (src/settings.ts)
@@ -81,11 +83,15 @@ shopify-admin-cli/
 
 ### Asset Management Scope
 
-#### Included Assets (GitOps-Suitable)
+#### Currently Implemented
+
+- **Theme files and customizations**: Complete theme pull/push with mirror mode
+- **Store authentication**: Private app validation and credential management
+
+#### Planned for Future Versions
 
 - Store configuration and settings
-- Theme files and customizations
-- Product catalog structure
+- Product catalog structure  
 - Content (pages, blogs, navigation)
 - Custom scripts and integrations
 

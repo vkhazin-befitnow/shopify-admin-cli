@@ -73,6 +73,67 @@ describe('Shopify Themes', () => {
         assert.ok(totalFiles > 0, 'Should download at least some theme files');
     });
 
+    test('Theme Pull (Dry Run)', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        const testThemePath = path.join(TEST_RUN_DIR, 'pull-dry-run-test');
+
+        // Test dry run pull (should not download files)
+        await themes.pull(creds.testThemeName, testThemePath, creds.site, creds.accessToken, 3, true);
+
+        // Verify no files were actually downloaded
+        assert.ok(!fs.existsSync(testThemePath) || fs.readdirSync(testThemePath).length === 0, 'Dry run should not create files');
+    });
+
+    test('Theme Pull (Mirror Mode)', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        const testThemePath = path.join(TEST_RUN_DIR, 'pull-mirror-test');
+
+        // First, create some local files that don't exist remotely
+        fs.mkdirSync(path.join(testThemePath, 'assets'), { recursive: true });
+        fs.writeFileSync(path.join(testThemePath, 'assets', 'local-only-file.js'), 'console.log("local only");');
+        fs.writeFileSync(path.join(testThemePath, 'assets', 'another-local-file.css'), '/* local only */');
+
+        // Pull with mirror mode - should delete local files not present remotely
+        await themes.pull(creds.testThemeName, testThemePath, creds.site, creds.accessToken, 3, false, true);
+
+        // Verify local-only files were deleted
+        assert.ok(!fs.existsSync(path.join(testThemePath, 'assets', 'local-only-file.js')), 'Local-only file should be deleted in mirror mode');
+        assert.ok(!fs.existsSync(path.join(testThemePath, 'assets', 'another-local-file.css')), 'Another local-only file should be deleted in mirror mode');
+
+        // Verify some remote files were downloaded
+        const assetsDir = path.join(testThemePath, 'assets');
+        if (fs.existsSync(assetsDir)) {
+            const downloadedFiles = fs.readdirSync(assetsDir);
+            assert.ok(downloadedFiles.length > 0, 'Should download remote files in mirror mode');
+        }
+    });
+
+    test('Pull Command with Dry Run and Mirror Parameters', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        const testThemePath = path.join(TEST_RUN_DIR, 'pull-command-test');
+
+        // Test themesPullCommand with dry-run and mirror parameters
+        await assert.doesNotReject(
+            async () => {
+                await themesPullCommand({
+                    themeName: creds.testThemeName,
+                    output: testThemePath,
+                    dryRun: true,
+                    mirror: true,
+                    site: creds.site,
+                    accessToken: creds.accessToken
+                });
+            },
+            'Pull command should handle dry-run and mirror parameters correctly'
+        );
+    });
+
     test('Theme Push (Dry Run)', async () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
@@ -95,18 +156,30 @@ describe('Shopify Themes', () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
 
-        const testThemePath = path.join(TEST_RUN_DIR, 'real-push-test');
+        const testThemePath = path.join(TEST_RUN_DIR, 'command-test');
 
-        // First pull to have test data
-        await themes.pull(creds.testThemeName, testThemePath, creds.site, creds.accessToken, 1);
+        // First pull to ensure we have theme files to push
+        await themes.pull(creds.testThemeName, testThemePath, creds.site, creds.accessToken, 2);
 
-        // Test real push (without --mirror to be safe)
-        await assert.doesNotReject(
-            async () => {
-                await themes.push(creds.testThemeName, testThemePath, creds.site, creds.accessToken, false);
-            },
-            'Real push should not throw errors'
-        );
+        // Create or modify a test file to ensure there's something to push
+        const testFilePath = path.join(testThemePath, 'assets', 'test-push-verification.js');
+        const testContent = `// Test file created at ${new Date().toISOString()}\nconsole.log('Push test verification');`;
+        fs.writeFileSync(testFilePath, testContent);
+
+        // Perform real push (this should throw if it fails)
+        await themes.push(creds.testThemeName, testThemePath, creds.site, creds.accessToken, false);
+
+        // Verify the push worked by checking if our test file exists remotely
+        // Use the themes instance to fetch assets and look for our specific file
+        const themesList = await themes['fetchThemes'](creds.site, creds.accessToken);
+        const theme = themesList.themes.find(t => t.name.toLowerCase() === creds.testThemeName.toLowerCase());
+        assert.ok(theme, 'Theme should exist');
+
+        const remoteAssets = await themes['fetchThemeAssets'](creds.site, creds.accessToken, theme.id);
+        const testAsset = remoteAssets.find(asset => asset.key === 'assets/test-push-verification.js');
+
+        assert.ok(testAsset, 'Test file should exist in remote theme after push');
+        console.log('Push verification successful: test file found in remote theme');
     });
 
     test('Theme Push Mirror Mode (Dry Run)', async () => {

@@ -36,12 +36,16 @@ themesCommand
   .description('Download a theme to local directory')
   .requiredOption('--name <name>', 'Theme name to download (e.g., "Dawn", "Horizon")')
   .requiredOption('--output <path>', 'Output directory path')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     await themesPullCommand({
       themeName: options.name,
       output: options.output,
+      dryRun: options.dryRun || false,
+      mirror: options.mirror || false,
       site: options.site,
       accessToken: options.accessToken
     });

@@ -4,7 +4,7 @@ GitOps-friendly CLI for Shopify theme management with explicit path control.
 
 ## Overview
 
-This CLI tool provides safe, stateless access to Shopify themes for developers and teams. It focuses on theme pull and push operations with explicit directory paths, dry-run support, and mirror mode for exact synchronization.
+This CLI tool provides safe, stateless access to Shopify themes for developers and teams. It focuses on theme pull and push operations with explicit directory paths, dry-run support, and mirror mode for exact synchronization in both directions.
 
 ## For Users
 
@@ -54,11 +54,12 @@ npm run test
 ```
 ├── src/
 │   ├── commands/     # CLI command implementations
-│   ├── lib/          # Core authentication and utilities
+│   ├── utils/        # Utilities (retry, dry-run)
+│   ├── settings.ts   # Configuration management
 │   └── index.ts      # Main CLI entry point
 ├── docs/             # User documentation
 ├── tests/            # Test files
-└── theme/            # Theme templates (if any)
+└── dist/             # Compiled JavaScript output
 ```
 
 

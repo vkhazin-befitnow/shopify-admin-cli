@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as yaml from 'js-yaml';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
@@ -22,6 +21,7 @@ interface ThemeListResult {
 
 interface Asset {
     key: string;
+    id?: number;
     public_url?: string;
     created_at: string;
     updated_at: string;
@@ -37,32 +37,14 @@ interface AssetListResult {
     assets: Asset[];
 }
 
+interface AssetUpload {
+    key: string;
+    attachment?: string;
+    value?: string;
+}
+
 export class ShopifyThemes {
     constructor() { }
-
-    async list(options?: {
-        site?: string;
-        accessToken?: string;
-    }): Promise<ThemeListResult> {
-        let site = options?.site;
-        let accessToken = options?.accessToken;
-
-        if (!site || !accessToken) {
-            const envCredentials = this.getCredentialsFromEnv();
-            if (envCredentials) {
-                site = site || envCredentials.site;
-                accessToken = accessToken || envCredentials.accessToken;
-            }
-        }
-
-        if (!site || !accessToken) {
-            throw new Error('Missing credentials. Provide either:\n' +
-                '1. CLI arguments: --site <domain> --access-token <token>\n' +
-                '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-        }
-
-        return await this.fetchThemes(site, accessToken);
-    }
 
     getCredentialsFromEnv(): { site: string; accessToken: string } | null {
         const site = process.env.SHOPIFY_STORE_DOMAIN;
@@ -75,7 +57,10 @@ export class ShopifyThemes {
         return null;
     }
 
-    async pull(themeName: string, outputPath: string, site: string, accessToken: string, maxAssets?: number): Promise<void> {
+    async pull(themeName: string, outputPath: string, site: string, accessToken: string, maxAssets?: number, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
+        const dryRunManager = new DryRunManager(dryRun);
+        dryRunManager.logDryRunHeader(`Pull theme "${themeName}"${mirror ? ' (Mirror Mode)' : ''}`);
+
         // First, get all themes to find the one with matching name
         const themesList = await this.fetchThemes(site, accessToken);
         const theme = themesList.themes.find(t => t.name.toLowerCase() === themeName.toLowerCase());
@@ -86,7 +71,7 @@ export class ShopifyThemes {
         }
 
         const finalOutputPath = this.prepareOutputDirectory(outputPath, theme.name);
-        console.log(`Pulling theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
+        console.log(`${dryRun ? 'Would pull' : 'Pulling'} theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
 
         let assets = await this.fetchThemeAssets(site, accessToken, theme.id);
 
@@ -94,10 +79,61 @@ export class ShopifyThemes {
             assets = assets.slice(0, maxAssets);
             console.log(`Limited to first ${assets.length} assets for testing`);
         } else {
-            console.log(`Found ${assets.length} assets to download`);
+            console.log(`Found ${assets.length} remote assets`);
         }
 
-        await this.downloadAssets(site, accessToken, theme.id, assets, finalOutputPath);
+        // Simple approach: always sync all files for reliability
+        const toDownload: Asset[] = [];
+        const toUpdate: Asset[] = [];
+        const toDelete: string[] = [];
+
+        // Check each asset
+        assets.forEach(asset => {
+            const localFilePath = path.join(finalOutputPath, asset.key);
+            if (!fs.existsSync(localFilePath)) {
+                toDownload.push(asset);
+            } else {
+                toUpdate.push(asset);
+            }
+        });
+
+        // Find local files to delete (only in mirror mode)
+        if (mirror) {
+            const remoteAssetKeys = new Set(assets.map(asset => asset.key));
+            toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteAssetKeys));
+        }
+
+        console.log(`Assets to download: ${toDownload.length} new, ${toUpdate.length} updated, ${assets.length - toDownload.length - toUpdate.length} unchanged`);
+        if (mirror && toDelete.length > 0) {
+            console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+        }
+
+        if (dryRun) {
+            console.log('\nDRY RUN SUMMARY:');
+            console.log(`Assets to download (new): ${toDownload.length}`);
+            console.log(`Assets to update (modified): ${toUpdate.length}`);
+            if (mirror && toDelete.length > 0) {
+                console.log(`Local files to delete: ${toDelete.length}`);
+                toDelete.slice(0, 10).forEach((file: string) => console.log(`  - ${file}`));
+                if (toDelete.length > 10) {
+                    console.log(`  ... and ${toDelete.length - 10} more files`);
+                }
+            }
+            return;
+        }
+
+        // Delete local files not present remotely (only in mirror mode)
+        if (mirror && toDelete.length > 0) {
+            this.deleteLocalFiles(finalOutputPath, toDelete);
+        }
+
+        // Download files that need it (new assets + updated assets)
+        const assetsToDownload = [...toDownload, ...toUpdate];
+        if (assetsToDownload.length > 0) {
+            await this.downloadAssets(site, accessToken, theme.id, assetsToDownload, finalOutputPath);
+        } else {
+            console.log('No assets need to be downloaded - all files are already up to date');
+        }
 
         console.log(`Successfully pulled theme "${theme.name}" to ${finalOutputPath}`);
     }
@@ -125,25 +161,58 @@ export class ShopifyThemes {
         // Get current remote assets for comparison
         const remoteAssets = await this.fetchThemeAssets(site, accessToken, theme.id);
 
-        // Analyze what changes would be made
-        const changes = this.analyzeChanges(localFiles, remoteAssets, mirror);
+        // Simple approach: always sync all files for reliability
+        const remoteAssetMap = new Map<string, Asset>();
+        remoteAssets.forEach(asset => remoteAssetMap.set(asset.key, asset));
+
+        const toUpload: Array<{ key: string, filePath: string, isImage: boolean }> = [];
+        const toUpdate: Array<{ key: string, filePath: string, isImage: boolean }> = [];
+        const toDelete: Asset[] = [];
+
+        // Check local files against remote
+        localFiles.forEach(localFile => {
+            const remoteAsset = remoteAssetMap.get(localFile.key);
+            if (!remoteAsset) {
+                toUpload.push(localFile);
+            } else {
+                toUpdate.push(localFile);
+            }
+        });
+
+        // Check for remote files that don't exist locally (only in mirror mode)
+        if (mirror) {
+            const localFileMap = new Map<string, { key: string, filePath: string, isImage: boolean }>();
+            localFiles.forEach(file => localFileMap.set(file.key, file));
+
+            remoteAssets.forEach(remoteAsset => {
+                if (!localFileMap.has(remoteAsset.key)) {
+                    toDelete.push(remoteAsset);
+                }
+            });
+        }
 
         console.log(`Found ${localFiles.length} local files`);
-        if (mirror && changes.toDelete.length > 0) {
-            console.log(`Mirror mode: ${changes.toDelete.length} remote files will be deleted`);
+        console.log(`Files to upload: ${toUpload.length} new, ${toUpdate.length} updated, ${localFiles.length - toUpload.length - toUpdate.length} unchanged`);
+        if (mirror && toDelete.length > 0) {
+            console.log(`Mirror mode: ${toDelete.length} remote files will be deleted`);
         }
 
         if (dryRun) {
-            dryRunManager.logDryRunSummary(changes);
+            dryRunManager.logDryRunSummary({ toUpload, toUpdate, toDelete });
             return;
         }
 
-        // Upload all files if not in dry-run mode
-        await this.uploadAssets(site, accessToken, theme.id, localFiles);
+        // Upload files that need it (new files + updated files)
+        const filesToUpload = [...toUpload, ...toUpdate];
+        if (filesToUpload.length > 0) {
+            await this.uploadAssets(site, accessToken, theme.id, filesToUpload);
+        } else {
+            console.log('No files need to be uploaded - all files are already up to date');
+        }
 
         // Delete remote files not present locally (only in mirror mode)
-        if (mirror && changes.toDelete.length > 0) {
-            await this.deleteAssets(site, accessToken, theme.id, changes.toDelete);
+        if (mirror && toDelete.length > 0) {
+            await this.deleteAssets(site, accessToken, theme.id, toDelete);
         }
 
         console.log(`Successfully pushed theme "${theme.name}"`);
@@ -154,7 +223,6 @@ export class ShopifyThemes {
 
         return await RetryUtility.withRetry(async () => {
             const response = await fetch(url, {
-                method: 'GET',
                 headers: {
                     'X-Shopify-Access-Token': accessToken,
                     'Content-Type': 'application/json'
@@ -170,33 +238,18 @@ export class ShopifyThemes {
             }
 
             if (!response.ok) {
-                throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+                const errorText = await response.text();
+                throw new Error(`API request failed: ${response.status} ${errorText}`);
             }
 
-            const data = await response.json();
-
-            if (!data.themes || !Array.isArray(data.themes)) {
-                throw new Error('Invalid response: missing themes data');
-            }
-
-            return { themes: data.themes };
-
+            return await response.json();
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
     private prepareOutputDirectory(outputPath: string, themeName: string): string {
-        let finalPath = outputPath;
-
-        if (!outputPath.endsWith('themes')) {
-            finalPath = path.join(outputPath, 'themes');
-        }
-
-        const themeFolder = themeName.replace(/[^a-zA-Z0-9\-_]/g, '_');
-        finalPath = path.join(finalPath, themeFolder);
-
-        fs.mkdirSync(finalPath, { recursive: true });
-
-        return finalPath;
+        // Use the exact output path provided by user - no assumptions
+        fs.mkdirSync(outputPath, { recursive: true });
+        return outputPath;
     }
 
     private async fetchThemeAssets(site: string, accessToken: string, themeId: number): Promise<Asset[]> {
@@ -204,7 +257,6 @@ export class ShopifyThemes {
 
         return await RetryUtility.withRetry(async () => {
             const response = await fetch(url, {
-                method: 'GET',
                 headers: {
                     'X-Shopify-Access-Token': accessToken,
                     'Content-Type': 'application/json'
@@ -220,16 +272,17 @@ export class ShopifyThemes {
             }
 
             if (!response.ok) {
-                throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+                const errorText = await response.text();
+                throw new Error(`API request failed: ${response.status} ${errorText}`);
             }
 
-            const data = await response.json();
-            return data.assets || [];
-
+            const result: AssetListResult = await response.json();
+            return result.assets;
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
     private async downloadAssets(site: string, accessToken: string, themeId: number, assets: Asset[], outputPath: string): Promise<void> {
+        // Ensure all necessary directories exist
         const directories = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
         directories.forEach(dir => {
             fs.mkdirSync(path.join(outputPath, dir), { recursive: true });
@@ -248,14 +301,19 @@ export class ShopifyThemes {
                 const content = await rateLimitedFetch(asset.key);
                 const filePath = path.join(outputPath, asset.key);
 
-                const dir = path.dirname(filePath);
-                fs.mkdirSync(dir, { recursive: true });
+                // Ensure the directory for this file exists
+                fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
                 if (asset.attachment) {
-                    fs.writeFileSync(filePath, Buffer.from(asset.attachment, 'base64'));
-                } else if (content) {
+                    // Binary file - decode from base64
+                    const buffer = Buffer.from(asset.attachment || content, 'base64');
+                    fs.writeFileSync(filePath, buffer);
+                } else {
+                    // Text file - write as utf8
                     fs.writeFileSync(filePath, content, 'utf8');
                 }
+
+                // Note: We don't need to set timestamps anymore since we always sync everything
 
             } catch (error: any) {
                 console.warn(`Failed to download ${asset.key}: ${error.message}`);
@@ -268,48 +326,52 @@ export class ShopifyThemes {
 
         return await RetryUtility.withRetry(async () => {
             const response = await fetch(url, {
-                method: 'GET',
                 headers: {
                     'X-Shopify-Access-Token': accessToken,
                     'Content-Type': 'application/json'
                 }
             });
 
-            if (!response.ok) {
-                throw new Error(`API request failed: ${response.status} ${await response.text()}`);
+            if (response.status === 401) {
+                throw new Error('Unauthorized: invalid token or store domain');
             }
 
-            const data = await response.json();
-            const asset = data.asset;
+            if (response.status === 403) {
+                throw new Error('Forbidden: missing required permissions. Ensure your app has read_themes scope');
+            }
 
-            return asset.value || asset.attachment || '';
+            if (response.status === 404) {
+                throw new Error(`Asset not found: ${assetKey}`);
+            }
 
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`API request failed: ${response.status} ${errorText}`);
+            }
+
+            const result = await response.json();
+            const asset = result.asset;
+
+            // Return the content (either attachment for binary or value for text)
+            return asset.attachment || asset.value || '';
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
     private validateThemeStructure(inputPath: string, themeName: string): string {
-        let themeFolder = inputPath;
-
-        // If inputPath contains a themes folder, look for the theme inside it
-        if (inputPath.includes('/themes/')) {
-            themeFolder = path.join(inputPath, themeName);
-        } else if (fs.existsSync(path.join(inputPath, 'themes', themeName))) {
-            themeFolder = path.join(inputPath, 'themes', themeName);
-        }
-
-        if (!fs.existsSync(themeFolder)) {
-            throw new Error(`Theme folder not found: ${themeFolder}`);
+        // Input path should point directly to a theme folder
+        if (!fs.existsSync(inputPath)) {
+            throw new Error(`Input path does not exist: ${inputPath}`);
         }
 
         // Validate that it has expected Shopify theme structure
         const expectedDirs = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
-        const missingDirs = expectedDirs.filter(dir => !fs.existsSync(path.join(themeFolder, dir)));
+        const missingDirs = expectedDirs.filter(dir => !fs.existsSync(path.join(inputPath, dir)));
 
         if (missingDirs.length > 0) {
-            console.warn(`Warning: Missing expected directories: ${missingDirs.join(', ')}`);
+            throw new Error(`Input path is not a valid Shopify theme. Missing directories: ${missingDirs.join(', ')}`);
         }
 
-        return themeFolder;
+        return inputPath;
     }
 
     private collectLocalThemeFiles(themeFolder: string): Array<{ key: string, filePath: string, isImage: boolean }> {
@@ -317,8 +379,9 @@ export class ShopifyThemes {
 
         // Recursively find all files in the theme folder
         const walkDir = (dir: string, baseDir: string) => {
-            const items = fs.readdirSync(dir);
+            if (!fs.existsSync(dir)) return;
 
+            const items = fs.readdirSync(dir);
             items.forEach(item => {
                 const itemPath = path.join(dir, item);
                 const stat = fs.statSync(itemPath);
@@ -328,14 +391,10 @@ export class ShopifyThemes {
                 } else if (stat.isFile()) {
                     const relativePath = path.relative(baseDir, itemPath);
                     const key = relativePath.replace(/\\/g, '/'); // Normalize path separators
-
-                    // Determine if it's a binary file (images, fonts, etc.)
-                    const ext = path.extname(key).toLowerCase();
-                    const binaryExts = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.pdf'];
-                    const isImage = binaryExts.includes(ext);
+                    const isImage = this.isImageFile(itemPath);
 
                     files.push({
-                        key,
+                        key: key,
                         filePath: itemPath,
                         isImage
                     });
@@ -345,46 +404,6 @@ export class ShopifyThemes {
 
         walkDir(themeFolder, themeFolder);
         return files;
-    }
-
-    private analyzeChanges(localFiles: Array<{ key: string, filePath: string, isImage: boolean }>, remoteAssets: Asset[], mirror: boolean = false): {
-        toUpload: Array<{ key: string, filePath: string, isImage: boolean }>;
-        toUpdate: Array<{ key: string, filePath: string, isImage: boolean }>;
-        toDelete: Asset[];
-    } {
-        const remoteAssetMap = new Map<string, Asset>();
-        remoteAssets.forEach(asset => remoteAssetMap.set(asset.key, asset));
-
-        const localFileMap = new Map<string, { key: string, filePath: string, isImage: boolean }>();
-        localFiles.forEach(file => localFileMap.set(file.key, file));
-
-        const toUpload: Array<{ key: string, filePath: string, isImage: boolean }> = [];
-        const toUpdate: Array<{ key: string, filePath: string, isImage: boolean }> = [];
-        const toDelete: Asset[] = [];
-
-        // Check local files against remote
-        localFiles.forEach(localFile => {
-            const remoteAsset = remoteAssetMap.get(localFile.key);
-            if (!remoteAsset) {
-                // New file - needs to be uploaded
-                toUpload.push(localFile);
-            } else {
-                // File exists remotely - assume it needs updating
-                // (We could add timestamp/checksum comparison here in the future)
-                toUpdate.push(localFile);
-            }
-        });
-
-        // Check for remote files that don't exist locally (only populate in mirror mode)
-        if (mirror) {
-            remoteAssets.forEach(remoteAsset => {
-                if (!localFileMap.has(remoteAsset.key)) {
-                    toDelete.push(remoteAsset);
-                }
-            });
-        }
-
-        return { toUpload, toUpdate, toDelete };
     }
 
     private async uploadAssets(site: string, accessToken: string, themeId: number, files: Array<{ key: string, filePath: string, isImage: boolean }>): Promise<void> {
@@ -409,30 +428,34 @@ export class ShopifyThemes {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEME_ASSETS(themeId)}`;
 
         const fileContent = fs.readFileSync(file.filePath);
-        let assetData: any;
+        const asset: AssetUpload = { key: file.key };
 
         if (file.isImage) {
-            // Binary file - send as base64 attachment
-            assetData = {
-                key: file.key,
-                attachment: fileContent.toString('base64')
-            };
+            asset.attachment = fileContent.toString('base64');
         } else {
-            // Text file - send as value
-            assetData = {
-                key: file.key,
-                value: fileContent.toString('utf8')
-            };
+            asset.value = fileContent.toString();
         }
 
+        const response = await this.makeRequest(url, 'PUT', {
+            asset
+        }, {
+            'X-Shopify-Access-Token': accessToken
+        });
+
+        if (response.status !== 200 && response.status !== 201) {
+            throw new Error(`Failed to upload ${file.key}: ${response.status} ${response.statusText}`);
+        }
+    }
+
+    private async makeRequest(url: string, method: string, body: any, headers: Record<string, string>): Promise<Response> {
         return await RetryUtility.withRetry(async () => {
             const response = await fetch(url, {
-                method: 'PUT',
+                method,
                 headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    ...headers
                 },
-                body: JSON.stringify({ asset: assetData })
+                body: JSON.stringify(body)
             });
 
             if (response.status === 401) {
@@ -448,6 +471,7 @@ export class ShopifyThemes {
                 throw new Error(`API request failed: ${response.status} ${errorText}`);
             }
 
+            return response;
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
@@ -502,42 +526,104 @@ export class ShopifyThemes {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    formatAsYaml(themes: Theme[]): string {
-        return yaml.dump({ themes }, {
-            indent: 2,
-            lineWidth: -1,
-            noRefs: true,
-            sortKeys: false
+
+
+    private deleteLocalFiles(outputPath: string, filesToDelete: string[]): void {
+        filesToDelete.forEach(file => {
+            const filePath = path.join(outputPath, file);
+            try {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath);
+                    console.log(`Deleted local file: ${file}`);
+                }
+            } catch (error: any) {
+                console.warn(`Failed to delete local file ${file}: ${error.message}`);
+            }
         });
+
+        // Clean up empty directories
+        this.cleanupEmptyDirectories(outputPath);
     }
-}
 
-export async function themesListCommand(options: {
-    site?: string;
-    accessToken?: string;
-}): Promise<void> {
-    const themes = new ShopifyThemes();
+    private cleanupEmptyDirectories(outputPath: string): void {
+        const walkDir = (dir: string) => {
+            if (!fs.existsSync(dir)) return;
 
-    try {
-        const result = await themes.list(options);
+            const items = fs.readdirSync(dir);
+            items.forEach(item => {
+                const itemPath = path.join(dir, item);
+                const stat = fs.statSync(itemPath);
 
-        if (result.themes.length === 0) {
-            console.log('themes: []');
-            return;
-        }
+                if (stat.isDirectory()) {
+                    walkDir(itemPath);
 
-        const yaml = themes.formatAsYaml(result.themes);
-        console.log(yaml);
+                    // Check if directory is empty after cleanup
+                    try {
+                        const remainingItems = fs.readdirSync(itemPath);
+                        if (remainingItems.length === 0 && itemPath !== outputPath) {
+                            fs.rmdirSync(itemPath);
+                            console.log(`Removed empty directory: ${path.relative(outputPath, itemPath)}`);
+                        }
+                    } catch (error) {
+                        // Directory might not be empty or might not exist
+                    }
+                }
+            });
+        };
 
-    } catch (error: any) {
-        console.error(`Failed to list themes: ${error.message}`);
-        process.exit(1);
+        walkDir(outputPath);
+    }
+
+    /**
+     * Check if a file is a binary/image file based on extension
+     */
+    private isImageFile(filePath: string): boolean {
+        const binaryExtensions = [
+            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
+            '.woff', '.woff2', '.ttf', '.eot', '.pdf', '.zip',
+            '.mp4', '.webm', '.mp3', '.wav', '.webp'
+        ];
+        const ext = path.extname(filePath).toLowerCase();
+        return binaryExtensions.includes(ext);
+    }
+
+    /**
+     * Find local files that should be deleted (not present in remote assets)
+     */
+    private findLocalFilesToDelete(outputPath: string, remoteAssetKeys: Set<string>): string[] {
+        const localFilesToDelete: string[] = [];
+
+        const walkDir = (dir: string, baseDir: string) => {
+            if (!fs.existsSync(dir)) return;
+
+            const items = fs.readdirSync(dir);
+            items.forEach(item => {
+                const itemPath = path.join(dir, item);
+                const stat = fs.statSync(itemPath);
+
+                if (stat.isDirectory()) {
+                    walkDir(itemPath, baseDir);
+                } else if (stat.isFile()) {
+                    const relativePath = path.relative(baseDir, itemPath);
+                    const key = relativePath.replace(/\\/g, '/'); // Normalize path separators
+
+                    if (!remoteAssetKeys.has(key)) {
+                        localFilesToDelete.push(key);
+                    }
+                }
+            });
+        };
+
+        walkDir(outputPath, outputPath);
+        return localFilesToDelete;
     }
 }
 
 export async function themesPullCommand(options: {
     themeName: string;
     output: string;
+    dryRun?: boolean;
+    mirror?: boolean;
     site?: string;
     accessToken?: string;
 }): Promise<void> {
@@ -561,7 +647,7 @@ export async function themesPullCommand(options: {
                 '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
         }
 
-        await themes.pull(options.themeName, options.output, site, accessToken);
+        await themes.pull(options.themeName, options.output, site, accessToken, undefined, options.dryRun || false, options.mirror || false);
 
     } catch (error: any) {
         console.error(`Failed to pull theme: ${error.message}`);

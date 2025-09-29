@@ -3,7 +3,7 @@
  * For use with access tokens (not OAuth flow)
  */
 export const SHOPIFY_API = {
-  VERSION: '2025-01',
+  VERSION: '2023-10',
   BASE_URL: (site: string) => `https://${site}/admin/api`,
   ENDPOINTS: {
     THEMES: 'themes.json',

@@ -73,8 +73,16 @@ shopify-admin themes pull --name "Horizon" --output ./themes/horizon
 - `--output <path>` - Exact output directory path where theme files will be created
 
 **Optional Options:**
+- `--dry-run` - Show what would be changed without making actual changes
+- `--mirror` - Mirror mode: delete local files not present remotely (destructive)
 - `--site <shop>` - Shopify store domain (e.g., mystore.myshopify.com)
 - `--access-token <token>` - Admin API access token (starts with shpat_)
+
+**Pull Modes:**
+- **Default**: Downloads all remote files to the specified directory. Existing local files are overwritten to ensure complete synchronization.
+- **Mirror mode** (`--mirror`): Makes the local directory exactly match the remote theme. **This will delete local files that don't exist remotely.**
+
+**Note**: The CLI uses a reliable "always sync" approach that ensures complete synchronization between local and remote files, prioritizing data integrity over incremental updates.
 
 The theme will be downloaded directly to the specified path with standard Shopify theme structure (assets/, config/, layout/, etc).
 
@@ -82,6 +90,15 @@ The theme will be downloaded directly to the specified path with standard Shopif
 ```bash
 # Download to specific directory
 shopify-admin themes pull --name "Dawn" --output ./backup/dawn
+
+# Preview what would be downloaded
+shopify-admin themes pull --name "Horizon" --output ./themes/horizon --dry-run
+
+# Mirror remote state exactly (destructive to local files)
+shopify-admin themes pull --name "Dawn" --output ./themes/dawn --mirror
+
+# Always preview mirror mode first
+shopify-admin themes pull --name "Production Theme" --output ./themes/production --mirror --dry-run
 
 # With explicit credentials
 shopify-admin themes pull --name "Horizon" --output ./themes/horizon \
@@ -105,8 +122,10 @@ shopify-admin themes push --name "Horizon" --input ./themes/horizon
 - `--access-token <token>` - Admin API access token (starts with shpat_)
 
 **Push Modes:**
-- **Default**: Only uploads new files and updates existing files. Remote files not present locally are left untouched.
+- **Default**: Uploads all local files to ensure complete synchronization. New files are uploaded and existing files are updated to match local versions.
 - **Mirror mode** (`--mirror`): Makes the remote theme exactly match your local files. **This will delete remote files that don't exist locally.**
+
+**Note**: The CLI uses a reliable "always sync" approach that ensures complete synchronization between local and remote files, prioritizing data integrity over incremental updates.
 
 **Examples:**
 ```bash
@@ -129,6 +148,23 @@ shopify-admin themes push --name "Horizon" --input ./themes/horizon \
 
 ## Safety Guidelines
 
+### Theme Pull Safety
+
+**Always use `--dry-run` first** when using mirror mode:
+```bash
+# ALWAYS preview changes first
+shopify-admin themes pull --name "Live Theme" --output ./themes/live --mirror --dry-run
+
+# Only run actual pull after reviewing what will be deleted locally
+shopify-admin themes pull --name "Live Theme" --output ./themes/live --mirror
+```
+
+**Mirror Mode Warning for Pull**
+- `--mirror` flag will **DELETE** local files not present remotely
+- This will **permanently delete** your local changes that don't exist on the remote theme
+- Use with caution when you have local modifications
+- Always backup local files before using pull mirror mode
+
 ### Theme Push Safety
 
 **Always use `--dry-run` first** when pushing to production themes:
@@ -140,7 +176,7 @@ shopify-admin themes push --name "Live Theme" --input ./themes --mirror --dry-ru
 shopify-admin themes push --name "Live Theme" --input ./themes --mirror
 ```
 
-**Mirror Mode Warning**
+**Mirror Mode Warning for Push**
 - `--mirror` flag will **DELETE** remote files not present locally
 - This is **irreversible** - deleted theme files cannot be recovered
 - Use with extreme caution on production themes
