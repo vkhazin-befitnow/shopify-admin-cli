@@ -2,134 +2,157 @@
 
 ## Vision
 
-A comprehensive CLI tool for Shopify store asset management with GitHub integration, enabling GitOps workflows for store configuration and content management while protecting customer PII.
+A CLI tool for Shopify store asset management enabling GitOps workflows for store configuration and content management while protecting customer PII.
+
+## Core Principles
+
+### GitOps-First Design
+
+All store assets are managed as code in version control:
+- Store configuration as declarative code
+- Version control for audit trail and rollback
+- Pull request workflows for change review
+- Environment promotion patterns
+
+### PII Protection
+
+The tool excludes all personally identifiable information:
+- No customer data or profiles
+- No order history or transactions
+- No payment or shipping information
+- Focus on store structure, not customer data
+
+### Stateless Authentication
+
+Designed for CI/CD and multi-environment workflows:
+- Token-based authentication (no OAuth complexity)
+- Environment variable configuration
+- No credential persistence
+- Works in both interactive and automated contexts
+
+### Selective Sync Philosophy
+
+Users control what assets to manage:
+- Explicit paths and targets
+- Mirror mode for exact synchronization
+- Dry-run preview before changes
+- No implicit operations
 
 ## Technology Stack
 
-- Runtime: Node.js with TypeScript
-- CLI Framework: Commander.js for command parsing
-- API Client: Shopify Admin API (REST/GraphQL)
-- Storage: Local file system
-- Source Control to keep history of changes
+- Node.js with TypeScript for type safety
+- Commander.js for CLI structure
+- Shopify Admin API (REST) for simplicity
+- Local file system for GitOps integration
 
-## Code Structure
+## Key Design Decisions
 
-```
-shopify-admin-cli/
-├── package.json               # Project dependencies and scripts
-├── package-lock.json          # Dependency lock file
-├── tsconfig.json              # TypeScript configuration
-├── README.md                  # Project overview and quick start
-├── .gitignore                 # Git ignore patterns
-├── docs/
-│   ├── blueprint.md           # Architecture and design documentation
-│   ├── user-guide.md          # Comprehensive user documentation
-│   └── README.md              # Documentation index
-├── src/
-│   ├── index.ts               # Main CLI entry point and command routing
-│   ├── settings.ts            # Configuration management
-│   ├── commands/
-│   │   ├── auth.ts            # Authentication commands (validate, status)
-│   │   └── themes.ts          # Theme management commands (pull, push)
-│   └── utils/
-│       ├── retry.ts           # Retry logic for API calls
-│       └── dry-run.ts         # Dry-run mode utilities
-├── tests/
-│   ├── auth.test.ts           # Authentication functionality tests
-│   ├── retry.test.ts          # Retry utility tests
-│   ├── themes.test.ts         # Theme command tests
-│   ├── README.md              # Testing documentation
-│   └── test-run/              # Test execution artifacts
-└── dist/                      # Compiled JavaScript output
-```
+### Private App Model
 
-### Key Components
+Using Shopify private apps instead of OAuth:
+- Simpler authentication flow
+- Better suited for automation
+- Direct token management
+- No callback URL complexity
 
-#### Entry Point (src/index.ts)
+Rationale: GitOps workflows need deterministic authentication without browser interaction.
 
-- Command-line argument parsing with Commander.js
-- Command routing and global error handling
-- Environment variable configuration
+### File-Based Operations
 
-#### Commands (src/commands/)
+All operations work with local file system:
+- Pull: remote → local files
+- Push: local files → remote
+- Mirror: exact synchronization
 
-- **auth.ts**: Authentication validation and store information
-- **themes.ts**: Theme pull and push operations with mirror mode support
-- Modular command implementations with consistent parameter handling
-- Dry-run support for safe preview of operations
-- Standardized output formatting
+Rationale: Enables version control integration and diff-based workflows.
 
-#### Configuration (src/settings.ts)
+### Published Theme Shortcut
 
-- Environment variable management
-- Default values and validation
-- Configuration precedence handling
+The `--published` flag simplifies working with the main/published theme:
+- Automatically discovers the published theme by role
+- Creates organized folder structure: `output/theme-name/`
+- Eliminates need to know exact theme names
+- Streamlines maintenance workflows
 
-## High-Level Architecture
+Rationale: Published theme is the most commonly modified theme. This reduces friction for common operations while maintaining explicit control.
 
-### Core Principles
+### Mirror Mode
 
-- GitOps-First: All store assets managed as code in version control
-- PII Protection: Exclude customer data, orders, and personal information
-- Selective Sync: Granular control over which assets to manage
-- Multi-Store: Support for multiple Shopify stores in single workflow
+Explicit opt-in for destructive operations:
+- Default: additive only (safe)
+- Mirror: delete remote items not present locally
+- Always requires dry-run first
 
-### Authentication Strategy
+Rationale: Prevents accidental data loss while enabling exact state management.
 
-- Private App Model: Uses Shopify private apps with Admin API access tokens
-- Token-Based: Simple bearer token authentication (no OAuth complexity)
-- Stateless Design: No credential persistence, uses environment variables and command-line parameters
-- Environment Integration: Support for CI/CD and local development workflows
+### Page Format Simplification
 
-### Asset Management Scope
+Minimal metadata in page files:
+- Single comment line with title and template
+- No auto-generated IDs or timestamps
+- Filename determines handle
 
-#### Currently Implemented
+Rationale: Reduces merge conflicts and focuses on content, not metadata.
 
-- **Theme files and customizations**: Complete theme pull/push with mirror mode
-- **Store authentication**: Private app validation and credential management
+## Integration Patterns
 
-#### Planned for Future Versions
+### Version Control Integration
 
-- Store configuration and settings
-- Product catalog structure  
-- Content (pages, blogs, navigation)
-- Custom scripts and integrations
+The tool produces Git-friendly output:
+- One file per asset for granular diffs
+- Deterministic file naming
+- Minimal metadata to reduce conflicts
+- Clean directory structure
 
-#### Excluded Assets (PII/Operational)
+### CI/CD Integration
 
-- Customer data and profiles
-- Order history and transactions
-- Payment and shipping information
-- Analytics and performance data
-- Inventory levels and operational metrics
+Designed for pipeline execution:
+- Environment variable authentication
+- Exit codes for success/failure
+- Structured output for parsing
+- Idempotent operations
 
-## Command Structure
+### Multi-Store Management
 
-The CLI follows a hierarchical command structure with grouped functionality for different asset types and operations. For detailed command usage, parameters, and examples, see the [User Guide](user-guide.md).
+Same tool across environments:
+- Environment variables determine target store
+- Separate directories per environment
+- Consistent command interface
+- Branch-based environment promotion
 
-### Design Principles
+## Architecture Boundaries
 
-- Consistent command patterns across all asset types
-- Standardized output format: YAML
-- Comprehensive error handling and validation
-- Support for both interactive and CI/CD usage
+### In Scope
 
-## Integration Points
+Store structure and configuration:
+- Themes and assets
+- Pages and content
+- Navigation and menus
+- Store settings
 
-### Version Control
+### Out of Scope
 
-- Git-native workflow with meaningful commit messages
-- Branch-based development for store changes
-- Pull request reviews for store modifications
+Operational data:
+- Customer information
+- Order history
+- Inventory levels
+- Analytics data
 
-### CI/CD Pipeline
+This boundary protects PII while enabling infrastructure-as-code patterns.
 
-- Automated deployment of approved changes
-- Environment promotion (dev → staging → production)
-- Rollback capabilities for failed deployments
+## Error Handling Strategy
 
-### Development Workflow
+- Fail fast on authentication errors
+- Retry with exponential backoff on rate limits
+- Detailed error messages with remediation steps
+- Dry-run mode for safe preview
 
-- Local development environment setup
-- Preview deployments for testing changes
-- Collaborative store management across teams
+## Future Considerations
+
+As the tool evolves, maintain these principles:
+- Keep GitOps workflow central
+- Preserve PII protection
+- Maintain stateless design
+- Avoid implicit behavior
+
+The code is the source of truth for current capabilities. This document focuses on why the tool is designed this way, not what it currently implements.

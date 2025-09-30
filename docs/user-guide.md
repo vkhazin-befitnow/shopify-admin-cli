@@ -2,32 +2,30 @@
 
 ## Overview
 
-A command-line tool for Shopify store management. Supports both interactive use and CI/CD pipelines with stateless authentication.
+A command-line tool for Shopify store management designed for GitOps workflows. Supports both interactive use and CI/CD pipelines with stateless authentication.
 
 ## Quick Start
 
 ### Create Private App
 
-1. In your Shopify admin, go to Settings > Apps and sales channels > Develop apps
-1. Create a new app with required scopes (see below)
-1. Install the app and copy the access token (starts with `shpat_`)
+- In your Shopify admin, go to Settings > Apps and sales channels > Develop apps
+- Create a new app with required scopes (see below)
+- Install the app and copy the access token (starts with `shpat_`)
 
 ### Set Credentials
 
-Two methods supported:
-
-**Environment variables** (recommended):
+Environment variables (recommended for GitOps):
 ```bash
 export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
 export SHOPIFY_ACCESS_TOKEN="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ```
 
-**CLI arguments** (overrides environment):
+CLI arguments (overrides environment):
 ```bash
 shopify-admin auth validate --site your-store.myshopify.com --access-token shpat_xxxxx
 ```
 
-### Install CLI
+### Install
 
 ```bash
 git clone https://github.com/vkhazin-befitnow/shopify-admin-cli.git
@@ -35,192 +33,188 @@ cd shopify-admin-cli
 npm install && npm run build && npm link
 ```
 
-## Commands
+## Core Concepts
 
-### auth
-Authentication commands for validating store credentials.
+### Dry-Run Mode
 
-#### validate
-Validate Shopify credentials and display store information with scopes.
+Always preview changes before applying them:
 ```bash
-shopify-admin auth validate
+shopify-admin themes push --name "Production" --input ./themes/prod --dry-run
 ```
 
-**Options:**
-- `--site <shop>` - Shopify store domain (e.g., mystore.myshopify.com)
-- `--access-token <token>` - Admin API access token (starts with shpat_)
+Use `--dry-run` to see what would change without making actual changes.
 
-**Examples:**
+### Mirror Mode
+
+Synchronize exactly with local state - remote items not present locally will be deleted:
 ```bash
-# Using environment variables
-shopify-admin auth validate
-
-# With explicit credentials
-shopify-admin auth validate --site your-store.myshopify.com --access-token shpat_xxxxx
+shopify-admin themes push --name "Production" --input ./themes/prod --mirror
 ```
 
-### themes
-Theme management commands for downloading and uploading themes.
+This is destructive. Always use `--dry-run` first.
 
-#### pull
-Download a theme to an explicit directory path.
+### Command Help
+
+For detailed command syntax and options:
 ```bash
-shopify-admin themes pull --name "Horizon" --output ./themes/horizon
+shopify-admin --help
+shopify-admin themes --help
+shopify-admin themes pull --help
 ```
 
-**Required Options:**
-- `--name <name>` - Theme name to download (e.g., "Dawn", "Horizon")
-- `--output <path>` - Exact output directory path where theme files will be created
+## Workflows
 
-**Optional Options:**
-- `--dry-run` - Show what would be changed without making actual changes
-- `--mirror` - Mirror mode: delete local files not present remotely (destructive)
-- `--site <shop>` - Shopify store domain (e.g., mystore.myshopify.com)
-- `--access-token <token>` - Admin API access token (starts with shpat_)
+### Theme Management Workflow
 
-**Pull Modes:**
-- **Default**: Downloads all remote files to the specified directory. Existing local files are overwritten to ensure complete synchronization.
-- **Mirror mode** (`--mirror`): Makes the local directory exactly match the remote theme. **This will delete local files that don't exist remotely.**
-
-**Note**: The CLI uses a reliable "always sync" approach that ensures complete synchronization between local and remote files, prioritizing data integrity over incremental updates.
-
-The theme will be downloaded directly to the specified path with standard Shopify theme structure (assets/, config/, layout/, etc).
-
-**Examples:**
 ```bash
-# Download to specific directory
-shopify-admin themes pull --name "Dawn" --output ./backup/dawn
+# Pull published/main theme (creates backup/themes/[ThemeName]/)
+shopify-admin themes pull --published --output ./backup
 
-# Preview what would be downloaded
-shopify-admin themes pull --name "Horizon" --output ./themes/horizon --dry-run
+# Or pull specific theme by name (creates backup/themes/Dawn/)
+shopify-admin themes pull --name "Dawn" --output ./backup
 
-# Mirror remote state exactly (destructive to local files)
-shopify-admin themes pull --name "Dawn" --output ./themes/dawn --mirror
+# Make changes locally
+# ... edit files ...
 
-# Always preview mirror mode first
-shopify-admin themes pull --name "Production Theme" --output ./themes/production --mirror --dry-run
+# Preview changes on test theme
+shopify-admin themes push --name "Test Theme" --input ./themes/test --dry-run
+shopify-admin themes push --name "Test Theme" --input ./themes/test
 
-# With explicit credentials
-shopify-admin themes pull --name "Horizon" --output ./themes/horizon \
-  --site your-store.myshopify.com --access-token shpat_xxxxx
+# After testing, deploy to production
+shopify-admin themes push --name "Live Theme" --input ./themes/prod --mirror --dry-run
+shopify-admin themes push --name "Live Theme" --input ./themes/prod --mirror
+
+# Or push directly to published theme (auto-finds in backup/themes/[ThemeName]/)
+shopify-admin themes push --published --input ./backup --mirror --dry-run
+shopify-admin themes push --published --input ./backup --mirror
 ```
 
-#### push
-Upload theme files from an explicit directory path to store.
+### Published Theme Shortcut
+
+The `--published` flag streamlines working with the main/published theme:
+
 ```bash
-shopify-admin themes push --name "Horizon" --input ./themes/horizon
+# Pull published theme to backup/themes/[ThemeName]/
+shopify-admin themes pull --published --output ./backup
+
+# Push to published theme (automatically finds theme in multiple locations)
+shopify-admin themes push --published --input ./backup
+
+# Or specify direct path
+shopify-admin themes push --published --input ./backup/themes/Dawn
 ```
 
-**Required Options:**
-- `--name <name>` - Theme name to upload to (e.g., "Dawn", "Horizon")
-- `--input <path>` - Exact input directory path containing theme files (assets/, config/, etc)
+Benefits:
+- No need to know exact theme name
+- Automatically finds the published/main theme  
+- Smart path resolution for both pull and push
+- Consistent folder structure: output/themes/theme-name
 
-**Optional Options:**
-- `--dry-run` - Show what would be changed without making actual changes
-- `--mirror` - Mirror mode: delete remote files not present locally (destructive)
-- `--site <shop>` - Shopify store domain (e.g., mystore.myshopify.com)
-- `--access-token <token>` - Admin API access token (starts with shpat_)
+Note: Either `--name` or `--published` must be provided for theme commands.
 
-**Push Modes:**
-- **Default**: Uploads all local files to ensure complete synchronization. New files are uploaded and existing files are updated to match local versions.
-- **Mirror mode** (`--mirror`): Makes the remote theme exactly match your local files. **This will delete remote files that don't exist locally.**
+### Page Management Workflow
 
-**Note**: The CLI uses a reliable "always sync" approach that ensures complete synchronization between local and remote files, prioritizing data integrity over incremental updates.
-
-**Examples:**
 ```bash
-# Safe upload - won't delete anything
-shopify-admin themes push --name "Dawn" --input ./backup/dawn
+# Pull pages to version control
+shopify-admin pages pull --output ./pages
 
-# Preview changes first
-shopify-admin themes push --name "Horizon" --input ./themes/horizon --dry-run
+# Edit pages locally
+# ... edit HTML files ...
 
-# Mirror local state exactly (destructive)
-shopify-admin themes push --name "Dawn" --input ./themes/dawn --mirror
+# Preview changes
+shopify-admin pages push --input ./pages --dry-run
 
-# Always preview mirror mode first
-shopify-admin themes push --name "Production Theme" --input ./themes/production --mirror --dry-run
+# Deploy changes
+shopify-admin pages push --input ./pages
+```
 
-# With explicit credentials
-shopify-admin themes push --name "Horizon" --input ./themes/horizon \
-  --site your-store.myshopify.com --access-token shpat_xxxxx
+### CI/CD Pipeline Example
+
+```bash
+# Authenticate using environment variables
+export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
+export SHOPIFY_ACCESS_TOKEN="${SECRET_TOKEN}"
+
+# Deploy themes to published theme
+shopify-admin themes push --published --input ./backup --mirror
+
+# Or deploy to specific theme
+shopify-admin themes push --name "Production" --input ./themes --mirror
+
+# Deploy pages
+shopify-admin pages push --input ./pages --mirror
 ```
 
 ## Safety Guidelines
 
-### Theme Pull Safety
+### Mirror Mode Warning
 
-**Always use `--dry-run` first** when using mirror mode:
-```bash
-# ALWAYS preview changes first
-shopify-admin themes pull --name "Live Theme" --output ./themes/live --mirror --dry-run
+- `--mirror` will DELETE remote items not present locally
+- This is irreversible
+- Always backup first
+- Always use `--dry-run` before actual push
 
-# Only run actual pull after reviewing what will be deleted locally
-shopify-admin themes pull --name "Live Theme" --output ./themes/live --mirror
+### Recommended Practices
+
+- Always run `--dry-run` first
+- Test on development theme/store before production
+- Keep backups of current state
+- Use version control for all files
+- Review dry-run output carefully before proceeding
+
+## Page File Format
+
+Pages are stored as HTML files with minimal metadata:
+
+```html
+<!-- Page: Contact | Template: contact -->
+
+<h1>Contact Us</h1>
+<p>Your page content here...</p>
 ```
 
-**Mirror Mode Warning for Pull**
-- `--mirror` flag will **DELETE** local files not present remotely
-- This will **permanently delete** your local changes that don't exist on the remote theme
-- Use with caution when you have local modifications
-- Always backup local files before using pull mirror mode
-
-### Theme Push Safety
-
-**Always use `--dry-run` first** when pushing to production themes:
-```bash
-# ALWAYS preview changes first
-shopify-admin themes push --name "Live Theme" --input ./themes --mirror --dry-run
-
-# Only run actual push after reviewing the preview
-shopify-admin themes push --name "Live Theme" --input ./themes --mirror
-```
-
-**Mirror Mode Warning for Push**
-- `--mirror` flag will **DELETE** remote files not present locally
-- This is **irreversible** - deleted theme files cannot be recovered
-- Use with extreme caution on production themes
-- Always backup themes before using mirror mode
-
-**Recommended Workflow**
-1. Pull current theme to exact path: `shopify-admin themes pull --name "Live Theme" --output ./backup/live`
-1. Make your changes locally
-1. Preview with dry-run: `shopify-admin themes push --name "Test Theme" --input ./themes/test --dry-run`
-1. Test on development theme first
-1. Use mirror mode only when intentional: `--mirror --dry-run` then `--mirror`
+- The template suffix is optional
+- No auto-generated metadata (IDs, timestamps) for GitOps compatibility
+- Page handle is derived from filename: `contact.html` → handle: `contact`
 
 ## Required API Scopes
 
 Configure these scopes in your private app:
 
-**Core Content & Assets**
+### Core Content & Assets
+
 - `read_files`, `write_files`
 - `read_content`, `write_content`
 - `read_themes`, `write_themes`, `write_theme_code`
 
-**Products & Collections**
+### Products & Collections
+
 - `read_products`, `write_products`
 
-**Store Configuration**
+### Store Configuration
+
 - `read_online_store_navigation`, `write_online_store_navigation`
 - `read_online_store_pages`, `write_online_store_pages`
 - `read_script_tags`, `write_script_tags`
 - `read_locales`, `write_locales`
 
-**Advanced Features**
+### Advanced Features
+
 - `read_legal_policies`, `write_legal_policies`
 - `read_metaobject_definitions`, `write_metaobject_definitions`
 - `read_metaobjects`, `write_metaobjects`
 
 ## Troubleshooting
 
-**Authentication Issues**
+### Authentication Issues
+
 - Verify access token starts with `shpat_`
 - Ensure private app is installed
 - Check required scopes are enabled
 - Use format: `your-store.myshopify.com`
 
-**Environment Variables**
+### Environment Variables
+
 ```bash
 # Check current values
 echo $SHOPIFY_STORE_DOMAIN $SHOPIFY_ACCESS_TOKEN
@@ -228,3 +222,12 @@ echo $SHOPIFY_STORE_DOMAIN $SHOPIFY_ACCESS_TOKEN
 # Re-export if needed
 source ./.env/dev.sh
 ```
+
+## Command Reference
+
+For detailed command syntax, options, and parameters, use:
+
+```bash
+shopify-admin --help
+shopify-admin <command> --help
+shopify-admin <command> <subcommand> --help

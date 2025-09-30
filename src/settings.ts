@@ -10,7 +10,9 @@ export const SHOPIFY_API = {
     THEME_BY_ID: (themeId: number) => `themes/${themeId}.json`,
     THEME_ASSETS: (themeId: number) => `themes/${themeId}/assets.json`,
     THEME_ASSET: (themeId: number, assetKey: string) =>
-      `themes/${themeId}/assets.json?asset[key]=${encodeURIComponent(assetKey)}`
+      `themes/${themeId}/assets.json?asset[key]=${encodeURIComponent(assetKey)}`,
+    PAGES: 'pages.json',
+    PAGE_BY_ID: (pageId: number) => `pages/${pageId}.json`
   },
   RETRY_CONFIG: {
     maxAttempts: 3,

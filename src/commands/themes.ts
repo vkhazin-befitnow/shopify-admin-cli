@@ -57,20 +57,31 @@ export class ShopifyThemes {
         return null;
     }
 
-    async pull(themeName: string, outputPath: string, site: string, accessToken: string, maxAssets?: number, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
+    async pull(themeName: string | null, outputPath: string, site: string, accessToken: string, maxAssets?: number, dryRun: boolean = false, mirror: boolean = false, published: boolean = false): Promise<void> {
         const dryRunManager = new DryRunManager(dryRun);
-        dryRunManager.logDryRunHeader(`Pull theme "${themeName}"${mirror ? ' (Mirror Mode)' : ''}`);
+        dryRunManager.logDryRunHeader(`Pull theme ${published ? '(published)' : `"${themeName}"`}${mirror ? ' (Mirror Mode)' : ''}`);
 
-        // First, get all themes to find the one with matching name
+        // First, get all themes to find the one with matching name or published theme
         const themesList = await this.fetchThemes(site, accessToken);
-        const theme = themesList.themes.find(t => t.name.toLowerCase() === themeName.toLowerCase());
-
-        if (!theme) {
-            const availableThemes = themesList.themes.map(t => `"${t.name}"`).join(', ');
-            throw new Error(`Theme "${themeName}" not found. Available themes: ${availableThemes}`);
+        
+        let theme: Theme | undefined;
+        if (published) {
+            theme = themesList.themes.find(t => t.role === 'main' || t.role === 'published');
+            if (!theme) {
+                throw new Error('No published theme found. Available themes: ' + themesList.themes.map(t => `"${t.name}" (role: ${t.role})`).join(', '));
+            }
+        } else {
+            if (!themeName) {
+                throw new Error('Theme name is required when --published flag is not used');
+            }
+            theme = themesList.themes.find(t => t.name.toLowerCase() === themeName.toLowerCase());
+            if (!theme) {
+                const availableThemes = themesList.themes.map(t => `"${t.name}"`).join(', ');
+                throw new Error(`Theme "${themeName}" not found. Available themes: ${availableThemes}`);
+            }
         }
 
-        const finalOutputPath = this.prepareOutputDirectory(outputPath, theme.name);
+        const finalOutputPath = this.resolveThemePath(outputPath, theme.name, false);
         console.log(`${dryRun ? 'Would pull' : 'Pulling'} theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
 
         let assets = await this.fetchThemeAssets(site, accessToken, theme.id);
@@ -122,6 +133,9 @@ export class ShopifyThemes {
             return;
         }
 
+        // Create output directory structure only when actually downloading
+        this.createOutputDirectory(finalOutputPath);
+
         // Delete local files not present remotely (only in mirror mode)
         if (mirror && toDelete.length > 0) {
             this.deleteLocalFiles(finalOutputPath, toDelete);
@@ -138,21 +152,32 @@ export class ShopifyThemes {
         console.log(`Successfully pulled theme "${theme.name}" to ${finalOutputPath}`);
     }
 
-    async push(themeName: string, inputPath: string, site: string, accessToken: string, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
+    async push(themeName: string | null, inputPath: string, site: string, accessToken: string, dryRun: boolean = false, mirror: boolean = false, published: boolean = false): Promise<void> {
         const dryRunManager = new DryRunManager(dryRun);
-        dryRunManager.logDryRunHeader(`Push theme "${themeName}"${mirror ? ' (Mirror Mode)' : ''}`);
+        dryRunManager.logDryRunHeader(`Push theme ${published ? '(published)' : `"${themeName}"`}${mirror ? ' (Mirror Mode)' : ''}`);
 
-        // First, get all themes to find the one with matching name
+        // First, get all themes to find the one with matching name or published theme
         const themesList = await this.fetchThemes(site, accessToken);
-        const theme = themesList.themes.find(t => t.name.toLowerCase() === themeName.toLowerCase());
-
-        if (!theme) {
-            const availableThemes = themesList.themes.map(t => `"${t.name}"`).join(', ');
-            throw new Error(`Theme "${themeName}" not found. Available themes: ${availableThemes}`);
+        
+        let theme: Theme | undefined;
+        if (published) {
+            theme = themesList.themes.find(t => t.role === 'main' || t.role === 'published');
+            if (!theme) {
+                throw new Error('No published theme found. Available themes: ' + themesList.themes.map(t => `"${t.name}" (role: ${t.role})`).join(', '));
+            }
+        } else {
+            if (!themeName) {
+                throw new Error('Theme name is required when --published flag is not used');
+            }
+            theme = themesList.themes.find(t => t.name.toLowerCase() === themeName.toLowerCase());
+            if (!theme) {
+                const availableThemes = themesList.themes.map(t => `"${t.name}"`).join(', ');
+                throw new Error(`Theme "${themeName}" not found. Available themes: ${availableThemes}`);
+            }
         }
 
-        // Validate input path structure
-        const themeFolder = this.validateThemeStructure(inputPath, themeName);
+        // Determine the theme folder path
+        const themeFolder = this.resolveThemePath(inputPath, theme.name, true);
         console.log(`${dryRun ? 'Would push' : 'Pushing'} local theme files from "${themeFolder}" to theme "${theme.name}" (ID: ${theme.id})`);
 
         // Collect all local files to upload
@@ -246,10 +271,47 @@ export class ShopifyThemes {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private prepareOutputDirectory(outputPath: string, themeName: string): string {
-        // Use the exact output path provided by user - no assumptions
+    private resolveThemePath(basePath: string, themeName: string, requireExists: boolean = false): string {
+        // Try multiple possible locations for the theme folder
+        const possiblePaths = [
+            basePath, // Direct path to theme folder
+            path.join(basePath, 'themes'), // parent/themes (without theme name)
+            path.join(basePath, 'themes', themeName) // parent/themes/theme-name
+        ];
+
+        for (const possiblePath of possiblePaths) {
+            if (requireExists) {
+                // For push: verify theme structure exists
+                if (this.isValidThemeStructure(possiblePath)) {
+                    return possiblePath;
+                }
+            } else {
+                // For pull: return first valid-looking path (will be created)
+                // Prefer paths ending with theme name
+                if (path.basename(possiblePath) === themeName) {
+                    return possiblePath;
+                }
+            }
+        }
+
+        // Default fallback for pull operations
+        if (!requireExists) {
+            const endsWithThemes = path.basename(basePath).toLowerCase() === 'themes';
+            const finalPath = endsWithThemes 
+                ? path.join(basePath, themeName)
+                : path.join(basePath, 'themes', themeName);
+            return finalPath;
+        }
+
+        throw new Error(
+            `Could not find valid theme structure for "${themeName}". ` +
+            `Tried:\n  - ${possiblePaths.join('\n  - ')}\n` +
+            `Expected Shopify theme directories: assets, config, layout, locales, sections, snippets, templates`
+        );
+    }
+
+    private createOutputDirectory(outputPath: string): void {
         fs.mkdirSync(outputPath, { recursive: true });
-        return outputPath;
     }
 
     private async fetchThemeAssets(site: string, accessToken: string, themeId: number): Promise<Asset[]> {
@@ -357,21 +419,16 @@ export class ShopifyThemes {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private validateThemeStructure(inputPath: string, themeName: string): string {
-        // Input path should point directly to a theme folder
-        if (!fs.existsSync(inputPath)) {
-            throw new Error(`Input path does not exist: ${inputPath}`);
+
+    private isValidThemeStructure(themePath: string): boolean {
+        if (!fs.existsSync(themePath)) {
+            return false;
         }
 
-        // Validate that it has expected Shopify theme structure
         const expectedDirs = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
-        const missingDirs = expectedDirs.filter(dir => !fs.existsSync(path.join(inputPath, dir)));
+        const missingDirs = expectedDirs.filter(dir => !fs.existsSync(path.join(themePath, dir)));
 
-        if (missingDirs.length > 0) {
-            throw new Error(`Input path is not a valid Shopify theme. Missing directories: ${missingDirs.join(', ')}`);
-        }
-
-        return inputPath;
+        return missingDirs.length === 0;
     }
 
     private collectLocalThemeFiles(themeFolder: string): Array<{ key: string, filePath: string, isImage: boolean }> {
@@ -620,10 +677,11 @@ export class ShopifyThemes {
 }
 
 export async function themesPullCommand(options: {
-    themeName: string;
+    themeName?: string;
     output: string;
     dryRun?: boolean;
     mirror?: boolean;
+    published?: boolean;
     site?: string;
     accessToken?: string;
 }): Promise<void> {
@@ -647,7 +705,7 @@ export async function themesPullCommand(options: {
                 '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
         }
 
-        await themes.pull(options.themeName, options.output, site, accessToken, undefined, options.dryRun || false, options.mirror || false);
+        await themes.pull(options.themeName || null, options.output, site, accessToken, undefined, options.dryRun || false, options.mirror || false, options.published || false);
 
     } catch (error: any) {
         console.error(`Failed to pull theme: ${error.message}`);
@@ -656,10 +714,11 @@ export async function themesPullCommand(options: {
 }
 
 export async function themesPushCommand(options: {
-    themeName: string;
+    themeName?: string;
     input: string;
     dryRun?: boolean;
     mirror?: boolean;
+    published?: boolean;
     site?: string;
     accessToken?: string;
 }): Promise<void> {
@@ -683,7 +742,7 @@ export async function themesPushCommand(options: {
                 '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
         }
 
-        await themes.push(options.themeName, options.input, site, accessToken, options.dryRun || false, options.mirror || false);
+        await themes.push(options.themeName || null, options.input, site, accessToken, options.dryRun || false, options.mirror || false, options.published || false);
 
     } catch (error: any) {
         console.error(`Failed to push theme: ${error.message}`);
