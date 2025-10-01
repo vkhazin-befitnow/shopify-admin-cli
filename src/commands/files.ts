@@ -629,7 +629,7 @@ export class ShopifyFiles {
             files: [
                 {
                     alt: file.metadata?.alt || file.fileName,
-                    contentType: this.getContentType(file.fileName),
+                    contentType: this.getShopifyContentType(file.fileName),
                     originalSource: stagedTarget.resourceUrl
                 }
             ]
@@ -709,21 +709,31 @@ export class ShopifyFiles {
     private getContentType(fileName: string): string {
         const ext = path.extname(fileName).toLowerCase();
         const mimeTypes: Record<string, string> = {
-            '.jpg': 'IMAGE',
-            '.jpeg': 'IMAGE',
-            '.png': 'IMAGE',
-            '.gif': 'IMAGE',
-            '.svg': 'IMAGE',
-            '.webp': 'IMAGE',
-            '.mp4': 'VIDEO',
-            '.mov': 'VIDEO',
-            '.avi': 'VIDEO',
-            '.pdf': 'FILE',
-            '.doc': 'FILE',
-            '.docx': 'FILE',
-            '.zip': 'FILE'
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml',
+            '.webp': 'image/webp',
+            '.mp4': 'video/mp4',
+            '.mov': 'video/quicktime',
+            '.avi': 'video/x-msvideo',
+            '.pdf': 'application/pdf',
+            '.doc': 'application/msword',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.zip': 'application/zip'
         };
-        return mimeTypes[ext] || 'FILE';
+        return mimeTypes[ext] || 'application/octet-stream';
+    }
+
+    private getShopifyContentType(fileName: string): 'IMAGE' | 'VIDEO' | 'FILE' {
+        const ext = path.extname(fileName).toLowerCase();
+        const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'];
+        const videoExtensions = ['.mp4', '.mov', '.avi'];
+        
+        if (imageExtensions.includes(ext)) return 'IMAGE';
+        if (videoExtensions.includes(ext)) return 'VIDEO';
+        return 'FILE';
     }
 
     private async deleteFiles(site: string, accessToken: string, files: FileNode[]): Promise<void> {
