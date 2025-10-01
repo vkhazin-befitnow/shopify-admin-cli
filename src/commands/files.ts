@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
@@ -24,6 +25,14 @@ interface FileNode {
     url?: string;
 }
 
+interface FileMetadata {
+    id: string;
+    alt?: string;
+    createdAt: string;
+    fileStatus: string;
+    contentType: 'IMAGE' | 'VIDEO' | 'FILE';
+}
+
 interface FilesQueryResponse {
     data: {
         files: {
@@ -39,6 +48,80 @@ interface FilesQueryResponse {
     errors?: Array<{
         message: string;
     }>;
+}
+
+interface FilesPullOptions {
+    site?: string;
+    accessToken?: string;
+    output: string;
+    maxFiles?: number;
+    dryRun: boolean;
+    mirror: boolean;
+}
+
+interface FilesPushOptions {
+    site?: string;
+    accessToken?: string;
+    input: string;
+    dryRun: boolean;
+    mirror: boolean;
+}
+
+interface GraphQLVariables {
+    [key: string]: unknown;
+}
+
+interface UserError {
+    field: string[];
+    message: string;
+}
+
+interface FileCreateUpdateResponse {
+    data: {
+        fileCreate?: {
+            files: Array<{
+                id: string;
+                alt?: string;
+                createdAt: string;
+            }>;
+            userErrors: UserError[];
+        };
+        fileUpdate?: {
+            files: Array<{
+                id: string;
+                alt?: string;
+                createdAt: string;
+            }>;
+            userErrors: UserError[];
+        };
+    };
+}
+
+interface StagedUploadTarget {
+    url: string;
+    resourceUrl: string;
+    parameters: Array<{
+        name: string;
+        value: string;
+    }>;
+}
+
+interface StagedUploadsCreateResponse {
+    data: {
+        stagedUploadsCreate: {
+            stagedTargets: StagedUploadTarget[];
+            userErrors: UserError[];
+        };
+    };
+}
+
+interface FileDeleteResponse {
+    data: {
+        fileDelete: {
+            deletedFileIds: string[];
+            userErrors: UserError[];
+        };
+    };
 }
 
 export class ShopifyFiles {
@@ -120,8 +203,8 @@ export class ShopifyFiles {
         const remoteFileMap = new Map<string, FileNode>();
         remoteFiles.forEach(file => remoteFileMap.set(this.getFileName(file), file));
 
-        const toUpload: Array<{ fileName: string, filePath: string }> = [];
-        const toUpdate: Array<{ fileName: string, filePath: string, fileId: string }> = [];
+        const toUpload: Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> = [];
+        const toUpdate: Array<{ fileName: string, filePath: string, fileId: string, metadata?: FileMetadata }> = [];
         const toDelete: Array<{ fileName: string, file: FileNode }> = [];
 
         localFiles.forEach(localFile => {
@@ -240,7 +323,7 @@ export class ShopifyFiles {
         return maxFiles ? allFiles.slice(0, maxFiles) : allFiles;
     }
 
-    private async graphqlRequest<T>(site: string, accessToken: string, query: string, variables?: any): Promise<T> {
+    private async graphqlRequest<T>(site: string, accessToken: string, query: string, variables?: GraphQLVariables): Promise<T> {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.GRAPHQL}`;
 
         return await RetryUtility.withRetry(async () => {
@@ -317,7 +400,7 @@ export class ShopifyFiles {
         const files = fs.readdirSync(outputPath, { withFileTypes: true });
 
         files.forEach(file => {
-            if (file.isFile()) {
+            if (file.isFile() && !file.name.endsWith('.meta')) {
                 if (!remoteFileNames.has(file.name)) {
                     toDelete.push(file.name);
                 }
@@ -333,8 +416,15 @@ export class ShopifyFiles {
             try {
                 fs.unlinkSync(filePath);
                 console.log(`Deleted local file: ${file}`);
-            } catch (error: any) {
-                console.warn(`Failed to delete ${file}: ${error.message}`);
+                
+                const metaPath = `${filePath}.meta`;
+                if (fs.existsSync(metaPath)) {
+                    fs.unlinkSync(metaPath);
+                    console.log(`Deleted metadata: ${file}.meta`);
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to delete ${file}: ${message}`);
             }
         });
     }
@@ -352,8 +442,9 @@ export class ShopifyFiles {
 
             try {
                 await rateLimitedDownload(file);
-            } catch (error: any) {
-                console.warn(`Failed to download ${fileName}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to download ${fileName}: ${message}`);
             }
         }
     }
@@ -391,7 +482,23 @@ export class ShopifyFiles {
             }
 
             fs.writeFileSync(filePath, buffer);
+
+            const metadata: FileMetadata = {
+                id: file.id,
+                alt: file.alt,
+                createdAt: file.createdAt,
+                fileStatus: file.fileStatus,
+                contentType: this.determineContentType(file)
+            };
+            const metaPath = `${filePath}.meta`;
+            fs.writeFileSync(metaPath, yaml.dump(metadata), 'utf8');
         }, SHOPIFY_API.RETRY_CONFIG);
+    }
+
+    private determineContentType(file: FileNode): 'IMAGE' | 'VIDEO' | 'FILE' {
+        if ('image' in file && file.image?.url) return 'IMAGE';
+        if ('sources' in file && file.sources) return 'VIDEO';
+        return 'FILE';
     }
 
     private resolveFilesPath(basePath: string): string {
@@ -434,8 +541,8 @@ export class ShopifyFiles {
         );
     }
 
-    private collectLocalFiles(inputPath: string): Array<{ fileName: string, filePath: string }> {
-        const files: Array<{ fileName: string, filePath: string }> = [];
+    private collectLocalFiles(inputPath: string): Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> {
+        const files: Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> = [];
 
         if (!fs.existsSync(inputPath)) {
             return files;
@@ -444,18 +551,31 @@ export class ShopifyFiles {
         const entries = fs.readdirSync(inputPath, { withFileTypes: true });
 
         entries.forEach(entry => {
-            if (entry.isFile()) {
+            if (entry.isFile() && !entry.name.endsWith('.meta')) {
                 const filePath = path.join(inputPath, entry.name);
-                files.push({ fileName: entry.name, filePath });
+                const metaPath = `${filePath}.meta`;
+                
+                let metadata: FileMetadata | undefined;
+                if (fs.existsSync(metaPath)) {
+                    try {
+                        const metaContent = fs.readFileSync(metaPath, 'utf8');
+                        metadata = yaml.load(metaContent) as FileMetadata;
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        console.warn(`Failed to read metadata for ${entry.name}: ${message}`);
+                    }
+                }
+                
+                files.push({ fileName: entry.name, filePath, metadata });
             }
         });
 
         return files;
     }
 
-    private async uploadFiles(site: string, accessToken: string, files: Array<{ fileName: string, filePath: string, fileId?: string }>): Promise<void> {
+    private async uploadFiles(site: string, accessToken: string, files: Array<{ fileName: string, filePath: string, fileId?: string, metadata?: FileMetadata }>): Promise<void> {
         const rateLimitedUpload = RetryUtility.rateLimited(
-            (file: { fileName: string, filePath: string, fileId?: string }) => this.uploadSingleFile(site, accessToken, file),
+            (file: { fileName: string, filePath: string, fileId?: string, metadata?: FileMetadata }) => this.uploadSingleFile(site, accessToken, file),
             RetryUtility.RATE_LIMITS.SHOPIFY_API
         );
 
@@ -465,13 +585,14 @@ export class ShopifyFiles {
 
             try {
                 await rateLimitedUpload(file);
-            } catch (error: any) {
-                console.warn(`Failed to upload ${file.fileName}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to upload ${file.fileName}: ${message}`);
             }
         }
     }
 
-    private async uploadSingleFile(site: string, accessToken: string, file: { fileName: string, filePath: string, fileId?: string }): Promise<void> {
+    private async uploadSingleFile(site: string, accessToken: string, file: { fileName: string, filePath: string, fileId?: string, metadata?: FileMetadata }): Promise<void> {
         const mutation = file.fileId ? `
             mutation fileUpdate($files: [FileUpdateInput!]!) {
                 fileUpdate(files: $files) {
@@ -507,19 +628,19 @@ export class ShopifyFiles {
         const variables = {
             files: [
                 {
-                    alt: file.fileName,
+                    alt: file.metadata?.alt || file.fileName,
                     contentType: this.getContentType(file.fileName),
                     originalSource: stagedTarget.resourceUrl
                 }
             ]
         };
 
-        const response = await this.graphqlRequest<any>(site, accessToken, mutation, variables);
+        const response = await this.graphqlRequest<FileCreateUpdateResponse>(site, accessToken, mutation, variables);
 
         const result = file.fileId ? response.data.fileUpdate : response.data.fileCreate;
         
-        if (result.userErrors && result.userErrors.length > 0) {
-            throw new Error(`Upload failed: ${result.userErrors.map((e: any) => e.message).join(', ')}`);
+        if (result && result.userErrors && result.userErrors.length > 0) {
+            throw new Error(`Upload failed: ${result.userErrors.map(e => e.message).join(', ')}`);
         }
     }
 
@@ -556,10 +677,10 @@ export class ShopifyFiles {
             ]
         };
 
-        const response = await this.graphqlRequest<any>(site, accessToken, mutation, variables);
+        const response = await this.graphqlRequest<StagedUploadsCreateResponse>(site, accessToken, mutation, variables);
 
         if (response.data.stagedUploadsCreate.userErrors.length > 0) {
-            throw new Error(`Staging failed: ${response.data.stagedUploadsCreate.userErrors.map((e: any) => e.message).join(', ')}`);
+            throw new Error(`Staging failed: ${response.data.stagedUploadsCreate.userErrors.map(e => e.message).join(', ')}`);
         }
 
         const stagedTarget = response.data.stagedUploadsCreate.stagedTargets[0];
@@ -567,7 +688,7 @@ export class ShopifyFiles {
         const fileBuffer = fs.readFileSync(filePath);
         const formData = new FormData();
         
-        stagedTarget.parameters.forEach((param: any) => {
+        stagedTarget.parameters.forEach(param => {
             formData.append(param.name, param.value);
         });
         
@@ -618,8 +739,9 @@ export class ShopifyFiles {
 
             try {
                 await rateLimitedDelete(file);
-            } catch (error: any) {
-                console.warn(`Failed to delete ${fileName}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to delete ${fileName}: ${message}`);
             }
         }
     }
@@ -641,15 +763,15 @@ export class ShopifyFiles {
             fileIds: [file.id]
         };
 
-        const response = await this.graphqlRequest<any>(site, accessToken, mutation, variables);
+        const response = await this.graphqlRequest<FileDeleteResponse>(site, accessToken, mutation, variables);
 
         if (response.data.fileDelete.userErrors && response.data.fileDelete.userErrors.length > 0) {
-            throw new Error(`Delete failed: ${response.data.fileDelete.userErrors.map((e: any) => e.message).join(', ')}`);
+            throw new Error(`Delete failed: ${response.data.fileDelete.userErrors.map(e => e.message).join(', ')}`);
         }
     }
 }
 
-export async function filesPullCommand(options: any): Promise<void> {
+export async function filesPullCommand(options: FilesPullOptions): Promise<void> {
     const files = new ShopifyFiles();
     const credentials = getCredentialsFromEnv();
 
@@ -683,7 +805,7 @@ export async function filesPullCommand(options: any): Promise<void> {
     );
 }
 
-export async function filesPushCommand(options: any): Promise<void> {
+export async function filesPushCommand(options: FilesPushOptions): Promise<void> {
     const files = new ShopifyFiles();
     const credentials = getCredentialsFromEnv();
 
