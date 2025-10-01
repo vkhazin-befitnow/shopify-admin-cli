@@ -15,10 +15,25 @@ npm run test      # Compiled mode
 
 ## Test Coverage
 
+### Authentication Tests (auth.test.ts)
 - Environment setup validation
 - Authentication flows (env vars + interactive)
 - Invalid credential handling
 - Store listing and credential persistence
+
+### Theme Tests (themes.test.ts)
+- Theme pull/push operations
+- Published theme handling
+- Mirror mode functionality
+
+### Pages Tests (pages.test.ts)
+- Page pull/push operations
+- Page file parsing
+
+### Multi-Component Tests (index.test.ts)
+- Component validation (theme, pages)
+- Pull component orchestration
+- Push component orchestration
 
 ## Expected Output
 
@@ -41,4 +56,3 @@ Total: 7 | Passed: 7 | Failed: 0
 
 **Missing env vars**: Verify variables per root [README.md](../README.md)
 **Invalid credentials**: Check private app setup and API scopes
-

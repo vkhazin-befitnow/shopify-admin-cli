@@ -111,12 +111,12 @@ export class ShopifyPages {
         const dryRunManager = new DryRunManager(dryRun);
         dryRunManager.logDryRunHeader(`Push pages${mirror ? ' (Mirror Mode)' : ''}`);
 
-        // Validate input path structure
-        this.validatePageStructure(inputPath);
-        console.log(`${dryRun ? 'Would push' : 'Pushing'} local pages from "${inputPath}"`);
+        // Resolve the pages folder path (similar to themes)
+        const pagesPath = this.resolvePagesPath(inputPath);
+        console.log(`${dryRun ? 'Would push' : 'Pushing'} local pages from "${pagesPath}"`);
 
         // Collect all local files to upload
-        const localFiles = this.collectLocalPageFiles(inputPath);
+        const localFiles = this.collectLocalPageFiles(pagesPath);
 
         // Get current remote pages for comparison
         const remotePages = await this.fetchPages(site, accessToken);
@@ -208,11 +208,15 @@ export class ShopifyPages {
     }
 
     private prepareOutputDirectory(outputPath: string): string {
-        // Use the exact output path provided by user - no assumptions
-        if (!fs.existsSync(outputPath)) {
-            fs.mkdirSync(outputPath, { recursive: true });
+        // Ensure pages are stored in a 'pages' subfolder for consistency with themes structure
+        const pagesPath = path.basename(outputPath).toLowerCase() === 'pages' 
+            ? outputPath 
+            : path.join(outputPath, 'pages');
+        
+        if (!fs.existsSync(pagesPath)) {
+            fs.mkdirSync(pagesPath, { recursive: true });
         }
-        return outputPath;
+        return pagesPath;
     }
 
     private getPageFilePath(outputPath: string, page: Page): string {
@@ -296,15 +300,32 @@ export class ShopifyPages {
         return content;
     }
 
-    private validatePageStructure(inputPath: string): void {
-        if (!fs.existsSync(inputPath)) {
-            throw new Error(`Input path does not exist: ${inputPath}`);
+    private resolvePagesPath(basePath: string): string {
+        // Try multiple possible locations for the pages folder
+        const possiblePaths = [
+            basePath, // Direct path to pages folder
+            path.join(basePath, 'pages') // parent/pages
+        ];
+
+        for (const possiblePath of possiblePaths) {
+            if (fs.existsSync(possiblePath)) {
+                const stat = fs.statSync(possiblePath);
+                if (stat.isDirectory()) {
+                    // Check if it contains .html files (pages)
+                    const entries = fs.readdirSync(possiblePath);
+                    const hasHtmlFiles = entries.some(entry => entry.endsWith('.html'));
+                    if (hasHtmlFiles) {
+                        return possiblePath;
+                    }
+                }
+            }
         }
 
-        const stat = fs.statSync(inputPath);
-        if (!stat.isDirectory()) {
-            throw new Error(`Input path must be a directory: ${inputPath}`);
-        }
+        throw new Error(
+            `Could not find pages folder with HTML files. ` +
+            `Tried:\n  - ${possiblePaths.join('\n  - ')}\n` +
+            `Expected directory containing .html page files`
+        );
     }
 
     private collectLocalPageFiles(inputPath: string): Array<{ handle: string, filePath: string }> {

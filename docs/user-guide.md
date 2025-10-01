@@ -128,6 +128,44 @@ shopify-admin pages push --input ./pages --dry-run
 shopify-admin pages push --input ./pages
 ```
 
+### Multi-Component Operations
+
+Pull or push multiple components in a single operation:
+
+```bash
+# Pull both theme and pages (default behavior - no --components needed)
+shopify-admin pull --output ./backup
+
+# Or explicitly specify components
+shopify-admin pull --components=theme,pages --output ./backup
+
+# Pull only theme
+shopify-admin pull --components=theme --output ./backup
+
+# Pull only pages
+shopify-admin pull --components=pages --output ./backup
+
+# Push both theme and pages (default behavior - no --components needed)
+shopify-admin push --input ./backup --mirror --dry-run
+shopify-admin push --input ./backup --mirror
+
+# Or explicitly specify components
+shopify-admin push --components=theme,pages --input ./backup --mirror
+
+# Push only pages
+shopify-admin push --components=pages --input ./backup
+```
+
+Features:
+- Default components: `theme,pages` (pulls/pushes both when --components not specified)
+- Orchestrates theme (published) and pages operations
+- Pages stored in `output/pages/` folder, themes in `output/themes/[ThemeName]/`
+- Supports all standard options: `--dry-run`, `--mirror`, credentials
+- Processes components sequentially with clear progress output
+- Stops on first error for safety
+
+Note: Theme operations always use the published theme when using multi-component commands.
+
 ### CI/CD Pipeline Example
 
 ```bash
@@ -135,6 +173,10 @@ shopify-admin pages push --input ./pages
 export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
 export SHOPIFY_ACCESS_TOKEN="${SECRET_TOKEN}"
 
+# Multi-component deployment (recommended)
+shopify-admin push --components=theme,pages --input ./backup --mirror
+
+# Or deploy individually:
 # Deploy themes to published theme
 shopify-admin themes push --published --input ./backup --mirror
 
