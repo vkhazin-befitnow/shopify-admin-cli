@@ -1,3 +1,5 @@
+import { getCredentialsFromEnv } from '../utils/auth';
+
 interface ValidationResult {
   shop: {
     name: string;
@@ -20,7 +22,7 @@ export class ShopifyAuth {
 
     // If no explicit parameters provided, try environment variables
     if (!finalSite || !finalAccessToken) {
-      const envCredentials = this.getCredentialsFromEnv();
+      const envCredentials = getCredentialsFromEnv();
       if (envCredentials) {
         finalSite = finalSite || envCredentials.site;
         finalAccessToken = finalAccessToken || envCredentials.accessToken;
@@ -35,17 +37,6 @@ export class ShopifyAuth {
     }
 
     return await this.validateWithGraphQL(finalSite, finalAccessToken);
-  }
-
-  private getCredentialsFromEnv(): { site: string; accessToken: string } | null {
-    const site = process.env.SHOPIFY_STORE_DOMAIN;
-    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-
-    if (site && accessToken) {
-      return { site, accessToken };
-    }
-
-    return null;
   }
 
   /**

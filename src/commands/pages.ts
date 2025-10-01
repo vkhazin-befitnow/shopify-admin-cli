@@ -3,6 +3,7 @@ import * as path from 'path';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
+import { getCredentialsFromEnv } from '../utils/auth';
 
 interface Page {
     id: number;
@@ -24,23 +25,16 @@ interface PageListResult {
 export class ShopifyPages {
     constructor() { }
 
-    getCredentialsFromEnv(): { site: string; accessToken: string } | null {
-        const site = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-
-        if (site && accessToken) {
-            return { site, accessToken };
-        }
-
-        return null;
-    }
-
     async pull(outputPath: string, site: string, accessToken: string, maxPages?: number, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
         const dryRunManager = new DryRunManager(dryRun);
         dryRunManager.logDryRunHeader(`Pull pages${mirror ? ' (Mirror Mode)' : ''}`);
 
-        const finalOutputPath = this.prepareOutputDirectory(outputPath);
+        const finalOutputPath = this.getOutputPath(outputPath);
         console.log(`${dryRun ? 'Would pull' : 'Pulling'} pages to: ${finalOutputPath}`);
+        
+        if (!dryRun) {
+            this.ensureDirectoryExists(finalOutputPath);
+        }
 
         let pages = await this.fetchPages(site, accessToken);
 
@@ -207,16 +201,17 @@ export class ShopifyPages {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private prepareOutputDirectory(outputPath: string): string {
+    private getOutputPath(outputPath: string): string {
         // Ensure pages are stored in a 'pages' subfolder for consistency with themes structure
-        const pagesPath = path.basename(outputPath).toLowerCase() === 'pages' 
+        return path.basename(outputPath).toLowerCase() === 'pages' 
             ? outputPath 
             : path.join(outputPath, 'pages');
-        
-        if (!fs.existsSync(pagesPath)) {
-            fs.mkdirSync(pagesPath, { recursive: true });
+    }
+
+    private ensureDirectoryExists(dirPath: string): void {
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
         }
-        return pagesPath;
     }
 
     private getPageFilePath(outputPath: string, page: Page): string {
@@ -464,7 +459,7 @@ export class ShopifyPages {
 // Export command functions to match the theme pattern
 export async function pagesPullCommand(options: any): Promise<void> {
     const pages = new ShopifyPages();
-    const credentials = pages.getCredentialsFromEnv();
+    const credentials = getCredentialsFromEnv();
 
     let finalSite = options.site;
     let finalAccessToken = options.accessToken;
@@ -498,7 +493,7 @@ export async function pagesPullCommand(options: any): Promise<void> {
 
 export async function pagesPushCommand(options: any): Promise<void> {
     const pages = new ShopifyPages();
-    const credentials = pages.getCredentialsFromEnv();
+    const credentials = getCredentialsFromEnv();
 
     let finalSite = options.site;
     let finalAccessToken = options.accessToken;

@@ -3,6 +3,7 @@ import * as path from 'path';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
+import { getCredentialsFromEnv } from '../utils/auth';
 
 interface Theme {
     id: number;
@@ -45,17 +46,6 @@ interface AssetUpload {
 
 export class ShopifyThemes {
     constructor() { }
-
-    getCredentialsFromEnv(): { site: string; accessToken: string } | null {
-        const site = process.env.SHOPIFY_STORE_DOMAIN;
-        const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-
-        if (site && accessToken) {
-            return { site, accessToken };
-        }
-
-        return null;
-    }
 
     async pull(themeName: string | null, outputPath: string, site: string, accessToken: string, maxAssets?: number, dryRun: boolean = false, mirror: boolean = false, published: boolean = false): Promise<void> {
         const dryRunManager = new DryRunManager(dryRun);
@@ -692,7 +682,7 @@ export async function themesPullCommand(options: {
         let accessToken = options.accessToken;
 
         if (!site || !accessToken) {
-            const envCredentials = themes.getCredentialsFromEnv();
+            const envCredentials = getCredentialsFromEnv();
             if (envCredentials) {
                 site = site || envCredentials.site;
                 accessToken = accessToken || envCredentials.accessToken;
@@ -729,7 +719,7 @@ export async function themesPushCommand(options: {
         let accessToken = options.accessToken;
 
         if (!site || !accessToken) {
-            const envCredentials = themes.getCredentialsFromEnv();
+            const envCredentials = getCredentialsFromEnv();
             if (envCredentials) {
                 site = site || envCredentials.site;
                 accessToken = accessToken || envCredentials.accessToken;

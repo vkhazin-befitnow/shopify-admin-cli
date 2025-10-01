@@ -8,9 +8,36 @@ A command-line tool for Shopify store management designed for GitOps workflows. 
 
 ### Create Private App
 
-- In your Shopify admin, go to Settings > Apps and sales channels > Develop apps
+- In your Shopify admin, go to Settings > Apps and sales channels > Develop apps > Create an app
 - Create a new app with required scopes (see below)
 - Install the app and copy the access token (starts with `shpat_`)
+
+## Required API Scopes
+
+Configure these scopes in your private app:
+
+### Core Content & Assets
+
+- `read_files`, `write_files`
+- `read_content`, `write_content`
+- `read_themes`, `write_themes`, `write_theme_code`
+
+### Products & Collections
+
+- `read_products`, `write_products`
+
+### Store Configuration
+
+- `read_online_store_navigation`, `write_online_store_navigation`
+- `read_online_store_pages`, `write_online_store_pages`
+- `read_script_tags`, `write_script_tags`
+- `read_locales`, `write_locales`
+
+### Advanced Features
+
+- `read_legal_policies`, `write_legal_policies`
+- `read_metaobject_definitions`, `write_metaobject_definitions`
+- `read_metaobjects`, `write_metaobjects`
 
 ### Set Credentials
 
@@ -128,16 +155,36 @@ shopify-admin pages push --input ./pages --dry-run
 shopify-admin pages push --input ./pages
 ```
 
+### File Management Workflow
+
+```bash
+# Pull files from store (images, videos, documents)
+shopify-admin files pull --output ./files
+
+# Pull limited number for testing
+shopify-admin files pull --output ./files --max-files 10
+
+# Preview changes
+shopify-admin files push --input ./files --dry-run
+
+# Upload files to store
+shopify-admin files push --input ./files
+
+# Mirror mode: sync exactly with local state
+shopify-admin files push --input ./files --mirror --dry-run
+shopify-admin files push --input ./files --mirror
+```
+
 ### Multi-Component Operations
 
 Pull or push multiple components in a single operation:
 
 ```bash
-# Pull both theme and pages (default behavior - no --components needed)
+# Pull theme, pages, and files (default behavior - no --components needed)
 shopify-admin pull --output ./backup
 
 # Or explicitly specify components
-shopify-admin pull --components=theme,pages --output ./backup
+shopify-admin pull --components=theme,pages,files --output ./backup
 
 # Pull only theme
 shopify-admin pull --components=theme --output ./backup
@@ -145,21 +192,24 @@ shopify-admin pull --components=theme --output ./backup
 # Pull only pages
 shopify-admin pull --components=pages --output ./backup
 
-# Push both theme and pages (default behavior - no --components needed)
+# Pull only files
+shopify-admin pull --components=files --output ./backup
+
+# Push theme, pages, and files (default behavior - no --components needed)
 shopify-admin push --input ./backup --mirror --dry-run
 shopify-admin push --input ./backup --mirror
 
 # Or explicitly specify components
-shopify-admin push --components=theme,pages --input ./backup --mirror
+shopify-admin push --components=theme,pages,files --input ./backup --mirror
 
-# Push only pages
-shopify-admin push --components=pages --input ./backup
+# Push specific components
+shopify-admin push --components=pages,files --input ./backup
 ```
 
 Features:
-- Default components: `theme,pages` (pulls/pushes both when --components not specified)
-- Orchestrates theme (published) and pages operations
-- Pages stored in `output/pages/` folder, themes in `output/themes/[ThemeName]/`
+- Default components: `theme,pages,files` (pulls/pushes all when --components not specified)
+- Orchestrates theme (published), pages, and files operations
+- Files stored in `output/files/` folder, pages in `output/pages/`, themes in `output/themes/[ThemeName]/`
 - Supports all standard options: `--dry-run`, `--mirror`, credentials
 - Processes components sequentially with clear progress output
 - Stops on first error for safety
@@ -174,7 +224,7 @@ export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
 export SHOPIFY_ACCESS_TOKEN="${SECRET_TOKEN}"
 
 # Multi-component deployment (recommended)
-shopify-admin push --components=theme,pages --input ./backup --mirror
+shopify-admin push --components=theme,pages,files --input ./backup --mirror
 
 # Or deploy individually:
 # Deploy themes to published theme
@@ -219,34 +269,6 @@ Pages are stored as HTML files with minimal metadata:
 - No auto-generated metadata (IDs, timestamps) for GitOps compatibility
 - Page handle is derived from filename: `contact.html` → handle: `contact`
 
-## Required API Scopes
-
-Configure these scopes in your private app:
-
-### Core Content & Assets
-
-- `read_files`, `write_files`
-- `read_content`, `write_content`
-- `read_themes`, `write_themes`, `write_theme_code`
-
-### Products & Collections
-
-- `read_products`, `write_products`
-
-### Store Configuration
-
-- `read_online_store_navigation`, `write_online_store_navigation`
-- `read_online_store_pages`, `write_online_store_pages`
-- `read_script_tags`, `write_script_tags`
-- `read_locales`, `write_locales`
-
-### Advanced Features
-
-- `read_legal_policies`, `write_legal_policies`
-- `read_metaobject_definitions`, `write_metaobject_definitions`
-- `read_metaobjects`, `write_metaobjects`
-
-## Troubleshooting
 
 ### Authentication Issues
 

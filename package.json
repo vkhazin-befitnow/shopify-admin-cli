@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "find tests -name '*.test.ts' -exec ts-node {} \\;",
+    "test": "ts-node tests/run-all.ts",
     "dev": "ts-node src/index.ts"
   },
   "keywords": [

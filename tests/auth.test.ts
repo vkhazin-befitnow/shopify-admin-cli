@@ -1,15 +1,18 @@
 /**
  * Authentication Test Suite
  * 
- * Tests the ShopifyAuth class with real API calls (no mocks).
+ * Tests authentication functionality including:
+ * - ShopifyAuth class with real API calls (no mocks)
+ * - getCredentialsFromEnv utility function
+ * 
  * Requires environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN
  */
 
 import { test, describe } from 'node:test';
-import assert from 'node:assert';
+import * as assert from 'node:assert';
 import { ShopifyAuth } from '../src/commands/auth';
+import { getCredentialsFromEnv } from '../src/utils/auth';
 
-// Helper functions
 function hasCredentials(): boolean {
     return !!(
         process.env.SHOPIFY_STORE_DOMAIN &&
@@ -27,15 +30,16 @@ function getCredentials(): { site: string; accessToken: string } | null {
     return null;
 }
 
-describe('Shopify Authentication', () => {
+describe('Authentication', () => {
     const auth = new ShopifyAuth();
+    const originalEnv = { ...process.env };
 
     test('Environment Setup Validation', () => {
         assert.ok(hasCredentials(),
             'Missing required environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
     });
 
-    test('Environment Variable Validation', async () => {
+    test('ShopifyAuth: Environment Variable Validation', async () => {
         const result = await auth.validate();
 
         assert.ok(result.shop, 'Shop information should be returned');
@@ -43,7 +47,7 @@ describe('Shopify Authentication', () => {
         assert.ok(result.shop.domain, 'Shop domain should be present');
     });
 
-    test('Explicit Parameter Validation', async () => {
+    test('ShopifyAuth: Explicit Parameter Validation', async () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
 
@@ -53,7 +57,7 @@ describe('Shopify Authentication', () => {
         assert.ok(result.shop.name, 'Shop name should be present');
     });
 
-    test('Invalid Credentials Handling', async () => {
+    test('ShopifyAuth: Invalid Credentials Handling', async () => {
         await assert.rejects(
             async () => {
                 await auth.validate('fake-store.myshopify.com', 'shpat_fake_token_12345');
@@ -65,7 +69,7 @@ describe('Shopify Authentication', () => {
         );
     });
 
-    test('Scope Retrieval', async () => {
+    test('ShopifyAuth: Scope Retrieval', async () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
 
@@ -75,8 +79,7 @@ describe('Shopify Authentication', () => {
         assert.ok(Array.isArray(result.scopes), 'Scopes should be an array');
     });
 
-    test('Missing Credentials Error', async () => {
-        // Temporarily clear environment variables
+    test('ShopifyAuth: Missing Credentials Error', async () => {
         const originalDomain = process.env.SHOPIFY_STORE_DOMAIN;
         const originalToken = process.env.SHOPIFY_ACCESS_TOKEN;
 
@@ -94,9 +97,88 @@ describe('Shopify Authentication', () => {
                 'Should throw error when no credentials provided'
             );
         } finally {
-            // Restore environment variables
             if (originalDomain) process.env.SHOPIFY_STORE_DOMAIN = originalDomain;
             if (originalToken) process.env.SHOPIFY_ACCESS_TOKEN = originalToken;
         }
+    });
+
+    test('getCredentialsFromEnv: should return credentials when both env vars are set', () => {
+        process.env.SHOPIFY_STORE_DOMAIN = 'test-store.myshopify.com';
+        process.env.SHOPIFY_ACCESS_TOKEN = 'test-token-123';
+
+        const credentials = getCredentialsFromEnv();
+
+        assert.deepStrictEqual(credentials, {
+            site: 'test-store.myshopify.com',
+            accessToken: 'test-token-123'
+        });
+
+        process.env = { ...originalEnv };
+    });
+
+    test('getCredentialsFromEnv: should return null when site is missing', () => {
+        delete process.env.SHOPIFY_STORE_DOMAIN;
+        process.env.SHOPIFY_ACCESS_TOKEN = 'test-token-123';
+
+        const credentials = getCredentialsFromEnv();
+
+        assert.strictEqual(credentials, null);
+
+        process.env = { ...originalEnv };
+    });
+
+    test('getCredentialsFromEnv: should return null when access token is missing', () => {
+        process.env.SHOPIFY_STORE_DOMAIN = 'test-store.myshopify.com';
+        delete process.env.SHOPIFY_ACCESS_TOKEN;
+
+        const credentials = getCredentialsFromEnv();
+
+        assert.strictEqual(credentials, null);
+
+        process.env = { ...originalEnv };
+    });
+
+    test('getCredentialsFromEnv: should return null when both env vars are missing', () => {
+        delete process.env.SHOPIFY_STORE_DOMAIN;
+        delete process.env.SHOPIFY_ACCESS_TOKEN;
+
+        const credentials = getCredentialsFromEnv();
+
+        assert.strictEqual(credentials, null);
+
+        process.env = { ...originalEnv };
+    });
+
+    test('getCredentialsFromEnv: should return null when env vars are empty strings', () => {
+        process.env.SHOPIFY_STORE_DOMAIN = '';
+        process.env.SHOPIFY_ACCESS_TOKEN = '';
+
+        const credentials = getCredentialsFromEnv();
+
+        assert.strictEqual(credentials, null);
+
+        process.env = { ...originalEnv };
+    });
+
+    test('getCredentialsFromEnv: should return null when only site is empty', () => {
+        process.env.SHOPIFY_STORE_DOMAIN = '';
+        process.env.SHOPIFY_ACCESS_TOKEN = 'test-token-123';
+
+        const credentials = getCredentialsFromEnv();
+
+        assert.strictEqual(credentials, null);
+
+        process.env = { ...originalEnv };
+    });
+
+    test('getCredentialsFromEnv: should return null when only access token is empty', () => {
+        process.env.SHOPIFY_STORE_DOMAIN = 'test-store.myshopify.com';
+        process.env.SHOPIFY_ACCESS_TOKEN = '';
+
+        const credentials = getCredentialsFromEnv();
+
+        assert.strictEqual(credentials, null);
+
+        process.env = { ...originalEnv };
     });
 });

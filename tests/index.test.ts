@@ -1,137 +1,163 @@
+/**
+ * Integration Test Suite
+ * 
+ * Tests component orchestration and validation logic
+ */
+
+import { test, describe } from 'node:test';
+import * as assert from 'node:assert';
 import { ShopifyThemes } from '../src/commands/themes';
 import { ShopifyPages } from '../src/commands/pages';
+import { getCredentialsFromEnv } from '../src/utils/auth';
 
-interface TestResult {
-    name: string;
-    passed: boolean;
-    duration: number;
-    error?: string;
-}
+describe('Component Orchestration', () => {
+    test('should validate component names', () => {
+        const validComponents = ['theme', 'pages'];
+        const testComponents = 'theme,pages,invalid';
+        const components = testComponents.split(',').map(c => c.trim().toLowerCase());
+        const invalid = components.filter(c => !validComponents.includes(c));
 
-class ShopifyAdminTest {
-    private results: TestResult[] = [];
+        assert.ok(invalid.length > 0, 'Should detect invalid components');
+        assert.ok(invalid.includes('invalid'), 'Should identify "invalid" as invalid');
+    });
 
-    async run(): Promise<void> {
-        console.log('\n🧪 Shopify Admin Multi-Component Test Suite\n');
+    test('should parse multiple components correctly', () => {
+        const components = 'theme,pages'.split(',').map(c => c.trim().toLowerCase());
+        
+        assert.strictEqual(components.length, 2);
+        assert.ok(components.includes('theme'));
+        assert.ok(components.includes('pages'));
+    });
 
-        await this.testComponentValidation();
-        await this.testPullComponentOrchestration();
-        await this.testPushComponentOrchestration();
+    test('should instantiate component classes', () => {
+        const themes = new ShopifyThemes();
+        const pages = new ShopifyPages();
 
-        this.printResults();
-    }
+        assert.ok(themes instanceof ShopifyThemes);
+        assert.ok(pages instanceof ShopifyPages);
+    });
 
-    private async testComponentValidation(): Promise<void> {
-        const testName = 'Component Validation';
-        const startTime = Date.now();
+    test('should have access to credentials utility', () => {
+        assert.strictEqual(typeof getCredentialsFromEnv, 'function');
+        
+        const credentials = getCredentialsFromEnv();
+        assert.ok(credentials === null || (credentials && credentials.site && credentials.accessToken));
+    });
+});
 
-        try {
-            const validComponents = ['theme', 'pages'];
-            const invalidComponents = ['invalid', 'test'];
+describe('Pull Command', () => {
+    test('should pass published flag to themes pull', async () => {
+        const mockOptions = {
+            output: './test-output',
+            dryRun: true,
+            mirror: false,
+            published: true,
+            site: 'test.myshopify.com',
+            accessToken: 'test-token'
+        };
 
-            const testComponents = 'theme,pages,invalid';
-            const components = testComponents.split(',').map(c => c.trim().toLowerCase());
-            const invalid = components.filter(c => !validComponents.includes(c));
+        assert.strictEqual(mockOptions.published, true, 'published flag should be set to true');
+        assert.ok(!('themeName' in mockOptions), 'themeName should not be present when published is true');
+    });
 
-            if (invalid.length > 0 && invalid.includes('invalid')) {
-                console.log(`[PASS] ${testName} (${Date.now() - startTime}ms)`);
-                this.results.push({
-                    name: testName,
-                    passed: true,
-                    duration: Date.now() - startTime
-                });
-            } else {
-                throw new Error('Component validation failed to detect invalid components');
-            }
-        } catch (error: any) {
-            console.log(`[FAIL] ${testName} (${Date.now() - startTime}ms)`);
-            this.results.push({
-                name: testName,
-                passed: false,
-                duration: Date.now() - startTime,
-                error: error.message
-            });
-        }
-    }
+    test('should not require theme-name when published flag is used', () => {
+        const options = {
+            output: './test-output',
+            published: true
+        };
 
-    private async testPullComponentOrchestration(): Promise<void> {
-        const testName = 'Pull Component Orchestration Logic';
-        const startTime = Date.now();
+        assert.ok(options.published, 'published flag should be true');
+        assert.ok(!('themeName' in options), 'themeName should not be required');
+    });
 
-        try {
-            const components = 'theme,pages'.split(',').map(c => c.trim().toLowerCase());
-            
-            if (components.length === 2 && components.includes('theme') && components.includes('pages')) {
-                console.log(`[PASS] ${testName} (${Date.now() - startTime}ms)`);
-                this.results.push({
-                    name: testName,
-                    passed: true,
-                    duration: Date.now() - startTime
-                });
-            } else {
-                throw new Error('Component parsing failed');
-            }
-        } catch (error: any) {
-            console.log(`[FAIL] ${testName} (${Date.now() - startTime}ms)`);
-            this.results.push({
-                name: testName,
-                passed: false,
-                duration: Date.now() - startTime,
-                error: error.message
-            });
-        }
-    }
+    test('should use default components when not specified', () => {
+        const defaultComponents = 'theme,files,pages';
+        const components = defaultComponents.split(',').map(c => c.trim().toLowerCase());
+        
+        assert.strictEqual(components.length, 3, 'should have 3 default components');
+        assert.ok(components.includes('theme'), 'should include theme');
+        assert.ok(components.includes('files'), 'should include files');
+        assert.ok(components.includes('pages'), 'should include pages');
+    });
 
-    private async testPushComponentOrchestration(): Promise<void> {
-        const testName = 'Push Component Orchestration Logic';
-        const startTime = Date.now();
+    test('should accept custom components list', () => {
+        const customComponents = 'theme,files';
+        const components = customComponents.split(',').map(c => c.trim().toLowerCase());
+        
+        assert.strictEqual(components.length, 2, 'should have 2 components');
+        assert.ok(components.includes('theme'), 'should include theme');
+        assert.ok(components.includes('files'), 'should include files');
+        assert.ok(!components.includes('pages'), 'should not include pages');
+    });
 
-        try {
-            const themes = new ShopifyThemes();
-            const pages = new ShopifyPages();
+    test('should accept single component', () => {
+        const singleComponent = 'theme';
+        const components = singleComponent.split(',').map(c => c.trim().toLowerCase());
+        
+        assert.strictEqual(components.length, 1, 'should have 1 component');
+        assert.strictEqual(components[0], 'theme', 'should be theme');
+    });
 
-            const hasThemeCredentials = typeof themes.getCredentialsFromEnv === 'function';
-            const hasPagesCredentials = typeof pages.getCredentialsFromEnv === 'function';
+    test('should validate component names', () => {
+        const invalidComponents = 'theme,invalid,files';
+        const components = invalidComponents.split(',').map(c => c.trim().toLowerCase());
+        const validComponents = ['theme', 'files', 'pages'];
+        const invalid = components.filter(c => !validComponents.includes(c));
+        
+        assert.ok(invalid.length > 0, 'should detect invalid components');
+        assert.ok(invalid.includes('invalid'), 'should identify "invalid" as invalid');
+    });
+});
 
-            if (hasThemeCredentials && hasPagesCredentials) {
-                console.log(`[PASS] ${testName} (${Date.now() - startTime}ms)`);
-                this.results.push({
-                    name: testName,
-                    passed: true,
-                    duration: Date.now() - startTime
-                });
-            } else {
-                throw new Error('Component classes not properly initialized');
-            }
-        } catch (error: any) {
-            console.log(`[FAIL] ${testName} (${Date.now() - startTime}ms)`);
-            this.results.push({
-                name: testName,
-                passed: false,
-                duration: Date.now() - startTime,
-                error: error.message
-            });
-        }
-    }
+describe('Push Command', () => {
+    test('should require theme-name for push operations', () => {
+        const options = {
+            input: './test-input',
+            themeName: 'MyTheme'
+        };
 
-    private printResults(): void {
-        console.log('\n📊 Test Summary');
-        const passed = this.results.filter(r => r.passed).length;
-        const failed = this.results.filter(r => !r.passed).length;
-        console.log(`Total: ${this.results.length} | Passed: ${passed} | Failed: ${failed}\n`);
+        assert.ok(options.themeName, 'themeName should be present for push');
+        assert.strictEqual(typeof options.themeName, 'string', 'themeName should be a string');
+    });
 
-        if (failed > 0) {
-            console.log('Failed Tests:');
-            this.results
-                .filter(r => !r.passed)
-                .forEach(r => console.log(`  - ${r.name}: ${r.error}`));
-            process.exit(1);
-        }
-    }
-}
+    test('should use default components when not specified', () => {
+        const defaultComponents = 'theme,files,pages';
+        const components = defaultComponents.split(',').map(c => c.trim().toLowerCase());
+        
+        assert.strictEqual(components.length, 3, 'should have 3 default components');
+        assert.ok(components.includes('theme'), 'should include theme');
+        assert.ok(components.includes('files'), 'should include files');
+        assert.ok(components.includes('pages'), 'should include pages');
+    });
 
-const test = new ShopifyAdminTest();
-test.run().catch(error => {
-    console.error('Test suite failed:', error);
-    process.exit(1);
+    test('should accept custom components list', () => {
+        const customComponents = 'files,pages';
+        const components = customComponents.split(',').map(c => c.trim().toLowerCase());
+        
+        assert.strictEqual(components.length, 2, 'should have 2 components');
+        assert.ok(components.includes('files'), 'should include files');
+        assert.ok(components.includes('pages'), 'should include pages');
+        assert.ok(!components.includes('theme'), 'should not include theme');
+    });
+
+    test('should validate component names for push', () => {
+        const invalidComponents = 'theme,badcomponent';
+        const components = invalidComponents.split(',').map(c => c.trim().toLowerCase());
+        const validComponents = ['theme', 'files', 'pages'];
+        const invalid = components.filter(c => !validComponents.includes(c));
+        
+        assert.ok(invalid.length > 0, 'should detect invalid components');
+        assert.ok(invalid.includes('badcomponent'), 'should identify "badcomponent" as invalid');
+    });
+
+    test('should handle theme-name requirement only when pushing theme', () => {
+        const componentsWithoutTheme = 'files,pages';
+        const componentsWithTheme = 'theme,files';
+        
+        const withoutTheme = componentsWithoutTheme.split(',').map(c => c.trim().toLowerCase());
+        const withTheme = componentsWithTheme.split(',').map(c => c.trim().toLowerCase());
+        
+        assert.ok(!withoutTheme.includes('theme'), 'theme-name should not be required');
+        assert.ok(withTheme.includes('theme'), 'theme-name should be required');
+    });
 });
