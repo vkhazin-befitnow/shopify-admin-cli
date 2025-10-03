@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as yaml from 'js-yaml';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { HttpClient } from '../utils/http-client';
@@ -25,27 +26,39 @@ interface PageListResult {
     pages: Page[];
 }
 
+interface PageMetadata {
+    id: number;
+    title: string;
+    handle: string;
+    author: string;
+    created_at: string;
+    updated_at: string;
+    published_at?: string;
+    template_suffix?: string;
+}
+
 export interface PagesPullOptions {
     output: string;
     maxPages?: number;
     dryRun?: boolean;
     mirror?: boolean;
-    site?: string;
-    accessToken?: string;
+    site: string;
+    accessToken: string;
 }
 
 export interface PagesPushOptions {
     input: string;
     dryRun?: boolean;
     mirror?: boolean;
-    site?: string;
-    accessToken?: string;
+    site: string;
+    accessToken: string;
 }
 
 export class ShopifyPages {
+    private static readonly HTML_EXTENSION = '.html';
+    private static readonly META_EXTENSION = '.meta';
+    
     private httpClient = new HttpClient();
-
-    constructor() { }
 
     async pull(outputPath: string, site: string, accessToken: string, maxPages?: number, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
         const dryRunManager = new DryRunManager(dryRun);
@@ -70,7 +83,7 @@ export class ShopifyPages {
         const toDelete: string[] = [];
 
         if (mirror) {
-            const remotePageHandles = new Set(pages.map(page => `${page.handle}.html`));
+            const remotePageHandles = new Set(pages.map(page => `${page.handle}${ShopifyPages.HTML_EXTENSION}`));
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remotePageHandles));
 
             if (toDelete.length > 0) {
@@ -89,17 +102,35 @@ export class ShopifyPages {
             return;
         }
 
+        let deletedCount = 0;
         if (mirror && toDelete.length > 0) {
-            this.deleteLocalFiles(finalOutputPath, toDelete);
+            deletedCount = this.deleteLocalFiles(finalOutputPath, toDelete);
         }
 
+        const downloadResult = { downloaded: 0, failed: 0, errors: [] as string[] };
         if (pages.length > 0) {
-            await this.downloadPages(pages, finalOutputPath);
+            Object.assign(downloadResult, await this.downloadPages(pages, finalOutputPath));
         } else {
             Logger.info('No pages to sync');
         }
 
-        Logger.success(`Successfully pulled pages to ${finalOutputPath}`);
+        const summary = [`Successfully pulled pages to ${finalOutputPath}`];
+        if (downloadResult.downloaded > 0) {
+            summary.push(`Downloaded: ${downloadResult.downloaded}`);
+        }
+        if (deletedCount > 0) {
+            summary.push(`Deleted: ${deletedCount}`);
+        }
+        if (downloadResult.failed > 0) {
+            summary.push(`Failed: ${downloadResult.failed}`);
+        }
+        
+        Logger.success(summary.join(' | '));
+
+        if (downloadResult.errors.length > 0) {
+            Logger.warn(`\nErrors encountered during pull:`);
+            downloadResult.errors.forEach(error => Logger.warn(`  - ${error}`));
+        }
     }
 
     async push(inputPath: string, site: string, accessToken: string, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
@@ -121,7 +152,7 @@ export class ShopifyPages {
 
             remotePages.forEach(remotePage => {
                 if (!localFileMap.has(remotePage.handle)) {
-                    toDelete.push({ key: `${remotePage.handle}.html`, page: remotePage });
+                    toDelete.push({ key: `${remotePage.handle}${ShopifyPages.HTML_EXTENSION}`, page: remotePage });
                 }
             });
 
@@ -143,17 +174,36 @@ export class ShopifyPages {
             return;
         }
 
+        const uploadResult = { uploaded: 0, failed: 0, errors: [] as string[] };
         if (localFiles.length > 0) {
-            await this.uploadPages(site, accessToken, localFiles);
+            Object.assign(uploadResult, await this.uploadPages(site, accessToken, localFiles));
         } else {
             Logger.info('No pages to upload');
         }
 
+        const deleteResult = { deleted: 0, failed: 0, errors: [] as string[] };
         if (mirror && toDelete.length > 0) {
-            await this.deletePages(site, accessToken, toDelete.map(item => item.page));
+            Object.assign(deleteResult, await this.deletePages(site, accessToken, toDelete.map(item => item.page)));
         }
 
-        Logger.success('Successfully pushed pages');
+        const summary = ['Successfully pushed pages'];
+        if (uploadResult.uploaded > 0) {
+            summary.push(`Uploaded: ${uploadResult.uploaded}`);
+        }
+        if (deleteResult.deleted > 0) {
+            summary.push(`Deleted: ${deleteResult.deleted}`);
+        }
+        if (uploadResult.failed > 0 || deleteResult.failed > 0) {
+            summary.push(`Failed: ${uploadResult.failed + deleteResult.failed}`);
+        }
+
+        Logger.success(summary.join(' | '));
+
+        const allErrors = [...uploadResult.errors, ...deleteResult.errors];
+        if (allErrors.length > 0) {
+            Logger.warn(`\nErrors encountered during push:`);
+            allErrors.forEach(error => Logger.warn(`  - ${error}`));
+        }
     }
 
     private async fetchPages(site: string, accessToken: string): Promise<Page[]> {
@@ -177,8 +227,7 @@ export class ShopifyPages {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`Failed to fetch pages list: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`)
-                ;
+                throw new Error(`Failed to fetch pages list: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
             }
 
             const result: PageListResult = await response.json();
@@ -188,7 +237,7 @@ export class ShopifyPages {
 
 
     private getPageFilePath(outputPath: string, page: Page): string {
-        return path.join(outputPath, `${page.handle}.html`);
+        return path.join(outputPath, `${page.handle}${ShopifyPages.HTML_EXTENSION}`);
     }
 
     private findLocalFilesToDelete(outputPath: string, remotePageHandles: Set<string>): string[] {
@@ -201,9 +250,13 @@ export class ShopifyPages {
         const files = fs.readdirSync(outputPath, { withFileTypes: true });
 
         files.forEach(file => {
-            if (file.isFile() && file.name.endsWith('.html')) {
+            if (file.isFile() && file.name.endsWith(ShopifyPages.HTML_EXTENSION)) {
                 if (!remotePageHandles.has(file.name)) {
                     toDelete.push(file.name);
+                    const metaFile = `${file.name}${ShopifyPages.META_EXTENSION}`;
+                    if (files.some(f => f.name === metaFile)) {
+                        toDelete.push(metaFile);
+                    }
                 }
             }
         });
@@ -211,36 +264,46 @@ export class ShopifyPages {
         return toDelete;
     }
 
-    private deleteLocalFiles(outputPath: string, filesToDelete: string[]): void {
+    private deleteLocalFiles(outputPath: string, filesToDelete: string[]): number {
+        let deletedCount = 0;
         filesToDelete.forEach(file => {
             const filePath = path.join(outputPath, file);
             try {
                 fs.unlinkSync(filePath);
                 Logger.info(`Deleted local file: ${file}`);
+                deletedCount++;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to delete ${file}: ${message}`);
             }
         });
+        return deletedCount;
     }
 
-    private async downloadPages(pages: Page[], outputPath: string): Promise<void> {
+    private async downloadPages(pages: Page[], outputPath: string): Promise<{ downloaded: number, failed: number, errors: string[] }> {
         const rateLimitedDownload = RetryUtility.rateLimited(
             (page: Page) => this.downloadSinglePage(page, outputPath),
             RetryUtility.RATE_LIMITS.SHOPIFY_API
         );
 
+        const result = { downloaded: 0, failed: 0, errors: [] as string[] };
+
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
-            Logger.progress(i + 1, pages.length, `Downloading ${page.handle}.html`);
+            Logger.progress(i + 1, pages.length, `Downloading ${page.handle}${ShopifyPages.HTML_EXTENSION}`);
 
             try {
                 await rateLimitedDownload(page);
+                result.downloaded++;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to download ${page.handle}: ${message}`);
+                result.failed++;
+                result.errors.push(`${page.handle}: ${message}`);
             }
         }
+
+        return result;
     }
 
     private async downloadSinglePage(page: Page, outputPath: string): Promise<void> {
@@ -254,6 +317,20 @@ export class ShopifyPages {
 
         // Save page HTML as-is from Shopify
         fs.writeFileSync(filePath, page.body_html || '', 'utf8');
+
+        // Save page metadata for future updates
+        const metadata: PageMetadata = {
+            id: page.id,
+            title: page.title,
+            handle: page.handle,
+            author: page.author,
+            created_at: page.created_at,
+            updated_at: page.updated_at,
+            published_at: page.published_at,
+            template_suffix: page.template_suffix
+        };
+        const metaPath = `${filePath}${ShopifyPages.META_EXTENSION}`;
+        fs.writeFileSync(metaPath, yaml.dump(metadata), 'utf8');
     }
 
     private resolvePagesPath(basePath: string): string {
@@ -267,7 +344,7 @@ export class ShopifyPages {
         }
 
         const entries = fs.readdirSync(pagesPath);
-        const hasHtmlFiles = entries.some(entry => entry.endsWith('.html'));
+        const hasHtmlFiles = entries.some(entry => entry.endsWith(ShopifyPages.HTML_EXTENSION));
 
         if (!hasHtmlFiles) {
             throw new Error(`No HTML files found in directory: ${pagesPath}`);
@@ -276,8 +353,8 @@ export class ShopifyPages {
         return pagesPath;
     }
 
-    private collectLocalPageFiles(inputPath: string): Array<{ handle: string, filePath: string }> {
-        const files: Array<{ handle: string, filePath: string }> = [];
+    private collectLocalPageFiles(inputPath: string): Array<{ handle: string, filePath: string, pageId?: number }> {
+        const files: Array<{ handle: string, filePath: string, pageId?: number }> = [];
 
         if (!fs.existsSync(inputPath)) {
             return files;
@@ -286,33 +363,54 @@ export class ShopifyPages {
         const entries = fs.readdirSync(inputPath, { withFileTypes: true });
 
         entries.forEach(entry => {
-            if (entry.isFile() && entry.name.endsWith('.html')) {
-                const handle = entry.name.replace('.html', '');
+            if (entry.isFile() && entry.name.endsWith(ShopifyPages.HTML_EXTENSION)) {
+                const handle = entry.name.replace(ShopifyPages.HTML_EXTENSION, '');
                 const filePath = path.join(inputPath, entry.name);
-                files.push({ handle, filePath });
+                const metaPath = `${filePath}${ShopifyPages.META_EXTENSION}`;
+
+                let pageId: number | undefined;
+                if (fs.existsSync(metaPath)) {
+                    try {
+                        const metaContent = fs.readFileSync(metaPath, 'utf8');
+                        const metadata = yaml.load(metaContent) as PageMetadata;
+                        pageId = metadata.id;
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : String(error);
+                        Logger.warn(`Failed to read metadata for ${entry.name}: ${message}`);
+                    }
+                }
+
+                files.push({ handle, filePath, pageId });
             }
         });
 
         return files;
     }
 
-    private async uploadPages(site: string, accessToken: string, files: Array<{ handle: string, filePath: string, pageId?: number }>): Promise<void> {
+    private async uploadPages(site: string, accessToken: string, files: Array<{ handle: string, filePath: string, pageId?: number }>): Promise<{ uploaded: number, failed: number, errors: string[] }> {
         const rateLimitedUpload = RetryUtility.rateLimited(
             (file: { handle: string, filePath: string, pageId?: number }) => this.uploadSinglePage(site, accessToken, file),
             RetryUtility.RATE_LIMITS.SHOPIFY_API
         );
 
+        const result = { uploaded: 0, failed: 0, errors: [] as string[] };
+
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            Logger.progress(i + 1, files.length, `Uploading ${file.handle}.html`);
+            Logger.progress(i + 1, files.length, `Uploading ${file.handle}${ShopifyPages.HTML_EXTENSION}`);
 
             try {
                 await rateLimitedUpload(file);
+                result.uploaded++;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to upload ${file.handle}: ${message}`);
+                result.failed++;
+                result.errors.push(`${file.handle}: ${message}`);
             }
         }
+
+        return result;
     }
 
     private async uploadSinglePage(site: string, accessToken: string, file: { handle: string, filePath: string, pageId?: number }): Promise<void> {
@@ -323,6 +421,27 @@ export class ShopifyPages {
             handle: file.handle,
             body_html: bodyHtml
         };
+
+        const metaPath = `${file.filePath}${ShopifyPages.META_EXTENSION}`;
+        if (fs.existsSync(metaPath)) {
+            try {
+                const metaContent = fs.readFileSync(metaPath, 'utf8');
+                const metadata = yaml.load(metaContent) as PageMetadata;
+                
+                if (metadata.title) {
+                    pageData.title = metadata.title;
+                }
+                if (metadata.template_suffix !== undefined) {
+                    pageData.template_suffix = metadata.template_suffix;
+                }
+                if (metadata.published_at !== undefined) {
+                    pageData.published_at = metadata.published_at;
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                Logger.warn(`Failed to read metadata for ${file.handle}, using defaults: ${message}`);
+            }
+        }
 
         const url = file.pageId
             ? `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.PAGE_BY_ID(file.pageId)}`
@@ -337,11 +456,13 @@ export class ShopifyPages {
         });
     }
 
-    private async deletePages(site: string, accessToken: string, pages: Page[]): Promise<void> {
+    private async deletePages(site: string, accessToken: string, pages: Page[]): Promise<{ deleted: number, failed: number, errors: string[] }> {
         const rateLimitedDelete = RetryUtility.rateLimited(
             (page: Page) => this.deleteSinglePage(site, accessToken, page),
             RetryUtility.RATE_LIMITS.SHOPIFY_API
         );
+
+        const result = { deleted: 0, failed: 0, errors: [] as string[] };
 
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
@@ -349,11 +470,16 @@ export class ShopifyPages {
 
             try {
                 await rateLimitedDelete(page);
+                result.deleted++;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to delete ${page.handle}: ${message}`);
+                result.failed++;
+                result.errors.push(`${page.handle}: ${message}`);
             }
         }
+
+        return result;
     }
 
     private async deleteSinglePage(site: string, accessToken: string, page: Page): Promise<void> {
@@ -368,7 +494,6 @@ export class ShopifyPages {
 
 }
 
-// Export command functions to match the theme pattern
 export async function pagesPullCommand(options: PagesPullOptions): Promise<void> {
     const pages = new ShopifyPages();
     const credentials = CredentialResolver.resolve(options);

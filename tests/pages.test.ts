@@ -45,6 +45,64 @@ describe('Shopify Pages', () => {
         assert.ok(hasCredentials(), 'Environment variables SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN should be set');
     });
 
+    test('Pages Push Should Update Existing Pages Not Create Duplicates', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Test credentials should be available');
+
+        const testPagesPath = path.join(TEST_RUN_DIR, 'pages-update-test');
+        cleanupTestDirectory(testPagesPath);
+
+        // Step 1: Pull existing pages
+        await pages.pull(testPagesPath, creds.site, creds.accessToken, 1);
+
+        const actualPagesPath = path.join(testPagesPath, 'pages');
+        const htmlFiles = fs.readdirSync(actualPagesPath).filter(file => file.endsWith('.html'));
+
+        assert.ok(htmlFiles.length > 0, 'Should have at least one page to test with');
+
+        const testPageFile = htmlFiles[0];
+        const testPageHandle = testPageFile.replace('.html', '');
+        const testPagePath = path.join(actualPagesPath, testPageFile);
+
+        // Step 2: Get initial count of pages with this handle
+        const remotePagesBefore = await pages['fetchPages'](creds.site, creds.accessToken);
+        const pagesWithHandleBefore = remotePagesBefore.filter(p => p.handle === testPageHandle);
+        const initialCount = pagesWithHandleBefore.length;
+
+        console.log(`Initial: Found ${initialCount} page(s) with handle "${testPageHandle}"`);
+        assert.strictEqual(initialCount, 1, `Should have exactly 1 page with handle "${testPageHandle}" before push`);
+
+        // Step 3: Modify the page content
+        const originalContent = fs.readFileSync(testPagePath, 'utf8');
+        const modifiedContent = originalContent + `\n<!-- Modified at ${new Date().toISOString()} -->`;
+        fs.writeFileSync(testPagePath, modifiedContent);
+
+        // Step 4: Push the modified page (should UPDATE, not CREATE)
+        await pages.push(testPagesPath, creds.site, creds.accessToken, false);
+
+        // Step 5: Verify no duplicate was created
+        const remotePagesAfter = await pages['fetchPages'](creds.site, creds.accessToken);
+        const pagesWithHandleAfter = remotePagesAfter.filter(p => p.handle === testPageHandle);
+        const finalCount = pagesWithHandleAfter.length;
+
+        console.log(`After push: Found ${finalCount} page(s) with handle "${testPageHandle}"`);
+
+        assert.strictEqual(
+            finalCount,
+            initialCount,
+            `Should still have ${initialCount} page(s) with handle "${testPageHandle}" after push (not ${finalCount}). Push should UPDATE existing pages, not create duplicates.`
+        );
+
+        // Step 6: Verify the content was actually updated
+        const updatedPage = pagesWithHandleAfter[0];
+        assert.ok(
+            updatedPage.body_html.includes(`Modified at`),
+            'Page content should be updated with the modified timestamp'
+        );
+
+        console.log('Successfully verified push updates existing pages without creating duplicates');
+    });
+
     test('Pages Pull with Limit', async () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
@@ -257,7 +315,7 @@ Template: page
         // Create pages subfolder structure (root/pages/)
         const actualPagesPath = path.join(testPagesPath, 'pages');
         fs.mkdirSync(actualPagesPath, { recursive: true });
-        
+
         const testPageContent = `<!-- Page Metadata
 Title: Command Test Page
 Handle: command-test-page
@@ -312,7 +370,7 @@ Template: page
                 // Verify content is saved as-is without metadata headers
                 assert.ok(typeof content === 'string', 'Content should be a string');
                 assert.ok(content.length > 0, 'Content should not be empty');
-                
+
                 // Content should NOT contain our metadata headers
                 assert.ok(!content.startsWith('<!-- Page:'), 'Content should not have metadata header added');
 
