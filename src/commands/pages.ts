@@ -168,16 +168,17 @@ export class ShopifyPages {
             });
 
             if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
+                throw new Error(`Failed to fetch pages list: Unauthorized - invalid access token or store domain. Verify your credentials.`);
             }
 
             if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has read_online_store_pages scope');
+                throw new Error(`Failed to fetch pages list: Forbidden - missing required permissions. Ensure your app has read_online_store_pages scope.`);
             }
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
+                throw new Error(`Failed to fetch pages list: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`)
+                ;
             }
 
             const result: PageListResult = await response.json();

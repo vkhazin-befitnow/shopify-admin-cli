@@ -21,9 +21,10 @@ export class HttpClient {
             body?: any;
             headers?: Record<string, string>;
             resourceType?: string;
+            operationContext?: string;
         } = {}
     ): Promise<Response> {
-        const { body, headers = {}, resourceType } = options;
+        const { body, headers = {}, resourceType, operationContext } = options;
 
         return await RetryUtility.withRetry(async () => {
             const response = await fetch(url, {
@@ -36,17 +37,20 @@ export class HttpClient {
             });
 
             if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
+                const context = operationContext ? `Failed to ${operationContext}: ` : '';
+                throw new Error(`${context}Unauthorized - invalid access token or store domain. Verify your credentials.`);
             }
 
             if (response.status === 403) {
+                const context = operationContext ? `Failed to ${operationContext}: ` : '';
                 const scopeHint = resourceType ? this.getScopeHint(resourceType) : '';
-                throw new Error(`Forbidden: missing required permissions${scopeHint}`);
+                throw new Error(`${context}Forbidden - missing required permissions${scopeHint}`);
             }
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
+                const context = operationContext ? `Failed to ${operationContext}: ` : '';
+                throw new Error(`${context}API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
             }
 
             return response;

@@ -2,40 +2,11 @@
 
 ## High Priority - Functionality & Consistency
 
-### 10. **CLI Entry Point Mixes Concerns**
-- **Location**: `src/index.ts` (304 lines)
-- **Issue**: Direct console.log/error usage instead of Logger, validation logic in CLI layer, error handling inconsistent with command pattern
-- **Impact**: Inconsistent with rest of codebase, harder to test, violates single responsibility
-- **Solution**: 
-  - Use Logger utility for all output in index.ts
-  - Move validation logic to command functions
-  - Let commands handle their own validation and error reporting
-
 ### 11. **Duplicated Theme Selection Logic**
 - **Location**: `src/commands/themes.ts` (lines 75-96 and 155-170)
 - **Issue**: Identical 20+ line theme selection logic duplicated in pull() and push()
 - **Impact**: Code duplication, maintenance burden, inconsistency risk
 - **Solution**: Extract to private method `findTheme(themeName, published, site, accessToken)`
-
-### 12. **Generic Error Messages Need More Context**
-- **Location**: 
-  - `src/utils/http-client.ts:39-49` - Generic HTTP error messages
-  - `src/commands/themes.ts:244, 292, 363, 485` - "API request failed" without operation context
-  - `src/commands/pages.ts:180` - Generic API failure message
-  - `src/commands/files.ts:329, 448, 661` - Generic failure messages
-- **Issue**: Error messages lack context about what operation failed and why
-- **Current State**: Some errors are very specific (auth, path validation), others are generic (HTTP failures)
-- **Impact**: Users don't know what they were trying to do when error occurred, harder to debug issues
-- **Solution**: 
-  - Add operation context to all error messages: "Failed to download theme asset 'styles.css': API request failed (403)"
-  - Include actionable next steps: "Check your access token has write_themes scope"
-  - Show resource being operated on: filename, theme name, page handle
-  - Differentiate between user errors (bad input) vs system errors (API down)
-- **Examples**:
-  - Instead of: "API request failed: 404"
-  - Better: "Failed to fetch theme 'Dawn': Theme not found (404). Available themes: Horizon, Debut"
-  - Instead of: "Failed to download file"
-  - Better: "Failed to download file 'banner.jpg' (ID: gid://shopify/MediaImage/123): No URL available. File may still be processing."
 
 ## Medium Priority - Code Organization
 
@@ -130,6 +101,16 @@
 ### 5. **Inconsistent Dry Run Implementation** ✅
 - **Status**: COMPLETED - Enhanced DryRunManager
 - **Results**: 60+ lines of manual dry-run checks eliminated
+
+### 10. **CLI Entry Point Not Using Logger** ✅
+- **Status**: COMPLETED - Replaced all console calls with Logger
+- **Results**:
+  - Added Logger import to src/index.ts
+  - Replaced 20+ console.log calls with Logger.info()
+  - Replaced 10+ console.error calls with Logger.error()
+  - Used Logger.success() for completion messages
+  - Now consistent with Logger usage across all 6 other files (62+ Logger calls)
+  - Benefits: Uniform logging pattern, can control verbosity, consistent output formatting
 
 ## Refactoring Progress
 

@@ -286,7 +286,7 @@ export class ShopifyFiles {
             });
 
             if (response.errors) {
-                throw new Error(`GraphQL errors: ${JSON.stringify(response.errors)}`);
+                throw new Error(`Failed to fetch files list via GraphQL: ${response.errors.map((e: any) => e.message).join(', ')}`);
             }
 
             const edges = response.data.files.edges;
@@ -317,16 +317,16 @@ export class ShopifyFiles {
             });
 
             if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
+                throw new Error(`Failed to fetch files list via GraphQL: Unauthorized - invalid access token or store domain. Verify your credentials.`);
             }
 
             if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has read_files scope');
+                throw new Error(`Failed to fetch files list via GraphQL: Forbidden - missing required permissions. Ensure your app has read_files scope.`);
             }
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
+                throw new Error(`Failed to fetch files list via GraphQL: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
             }
 
             return await response.json();
@@ -436,7 +436,8 @@ export class ShopifyFiles {
         }
 
         if (!fileUrl) {
-            throw new Error(`No URL available for file ID ${file.id}`);
+            const fileName = this.getFileName(file);
+            throw new Error(`Failed to download file '${fileName}' (ID: ${file.id}): No download URL available. The file may still be processing or may have been deleted.`);
         }
 
         const filePath = this.getFileLocalPath(outputPath, file);
@@ -445,7 +446,8 @@ export class ShopifyFiles {
             const response = await fetch(fileUrl);
 
             if (!response.ok) {
-                throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+                const fileName = this.getFileName(file);
+                throw new Error(`Failed to download file '${fileName}' (ID: ${file.id}): Download request failed (${response.status}): ${response.statusText}`);
             }
 
             const arrayBuffer = await response.arrayBuffer();
@@ -598,7 +600,7 @@ export class ShopifyFiles {
         const result = file.fileId ? response.data.fileUpdate : response.data.fileCreate;
 
         if (result && result.userErrors && result.userErrors.length > 0) {
-            throw new Error(`Upload failed: ${result.userErrors.map(e => e.message).join(', ')}`);
+            throw new Error(`Failed to upload file '${file.fileName}'${file.fileId ? ' (update)' : ' (create)'}: ${result.userErrors.map(e => e.message).join(', ')}`);
         }
     }
 
@@ -638,7 +640,7 @@ export class ShopifyFiles {
         const response = await this.graphqlRequest<StagedUploadsCreateResponse>(site, accessToken, mutation, variables);
 
         if (response.data.stagedUploadsCreate.userErrors.length > 0) {
-            throw new Error(`Staging failed: ${response.data.stagedUploadsCreate.userErrors.map(e => e.message).join(', ')}`);
+            throw new Error(`Failed to create staging upload for file '${fileName}': ${response.data.stagedUploadsCreate.userErrors.map(e => e.message).join(', ')}`);
         }
 
         const stagedTarget = response.data.stagedUploadsCreate.stagedTargets[0];
@@ -658,7 +660,8 @@ export class ShopifyFiles {
         });
 
         if (!uploadResponse.ok) {
-            throw new Error(`Failed to upload to staging: ${uploadResponse.status} ${uploadResponse.statusText}`);
+            throw new Error(`Failed to upload file '${fileName}' to staging area: Upload request failed (${uploadResponse.status}): ${uploadResponse.statusText}`)
+            ;
         }
 
         return { resourceUrl: stagedTarget.resourceUrl };
@@ -734,7 +737,8 @@ export class ShopifyFiles {
         const response = await this.graphqlRequest<FileDeleteResponse>(site, accessToken, mutation, variables);
 
         if (response.data.fileDelete.userErrors && response.data.fileDelete.userErrors.length > 0) {
-            throw new Error(`Delete failed: ${response.data.fileDelete.userErrors.map(e => e.message).join(', ')}`);
+            const fileName = this.getFileName(file);
+            throw new Error(`Failed to delete file '${fileName}' (ID: ${file.id}): ${response.data.fileDelete.userErrors.map(e => e.message).join(', ')}`);
         }
     }
 }

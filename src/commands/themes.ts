@@ -232,16 +232,16 @@ export class ShopifyThemes {
             });
 
             if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
+                throw new Error(`Failed to fetch themes list: Unauthorized - invalid access token or store domain. Verify your credentials.`);
             }
 
             if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has read_themes scope');
+                throw new Error(`Failed to fetch themes list: Forbidden - missing required permissions. Ensure your app has read_themes scope.`);
             }
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
+                throw new Error(`Failed to fetch themes list: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
             }
 
             return await response.json();
@@ -280,16 +280,16 @@ export class ShopifyThemes {
             });
 
             if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
+                throw new Error(`Failed to fetch assets for theme (ID: ${themeId}): Unauthorized - invalid access token or store domain. Verify your credentials.`);
             }
 
             if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has read_themes scope');
+                throw new Error(`Failed to fetch assets for theme (ID: ${themeId}): Forbidden - missing required permissions. Ensure your app has read_themes scope.`);
             }
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
+                throw new Error(`Failed to fetch assets for theme (ID: ${themeId}): API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
             }
 
             const result: AssetListResult = await response.json();
@@ -347,20 +347,20 @@ export class ShopifyThemes {
             });
 
             if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
+                throw new Error(`Failed to download theme asset '${assetKey}': Unauthorized - invalid access token or store domain. Verify your credentials.`);
             }
 
             if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has read_themes scope');
+                throw new Error(`Failed to download theme asset '${assetKey}': Forbidden - missing required permissions. Ensure your app has read_themes scope.`);
             }
 
             if (response.status === 404) {
-                throw new Error(`Asset not found: ${assetKey}`);
+                throw new Error(`Failed to download theme asset '${assetKey}': Asset not found in theme (ID: ${themeId}). The asset may have been deleted.`);
             }
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
+                throw new Error(`Failed to download theme asset '${assetKey}': API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
             }
 
             const result = await response.json();
@@ -468,11 +468,11 @@ export class ShopifyThemes {
             });
 
             if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
+                throw new Error(`Failed to delete theme asset '${asset.key}': Unauthorized - invalid access token or store domain. Verify your credentials.`);
             }
 
             if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has write_themes scope');
+                throw new Error(`Failed to delete theme asset '${asset.key}': Forbidden - missing required permissions. Ensure your app has write_themes scope.`);
             }
 
             if (response.status === 404) {
@@ -482,7 +482,7 @@ export class ShopifyThemes {
 
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
+                throw new Error(`Failed to delete theme asset '${asset.key}' from theme (ID: ${themeId}): API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
             }
 
         }, SHOPIFY_API.RETRY_CONFIG);

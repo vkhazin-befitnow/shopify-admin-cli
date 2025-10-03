@@ -6,6 +6,7 @@ import { themesPullCommand, themesPushCommand } from './commands/themes';
 import { filesPullCommand, filesPushCommand } from './commands/files';
 import { pagesPullCommand, pagesPushCommand } from './commands/pages';
 import { CLI_VERSION } from './settings';
+import { Logger } from './utils/logger';
 
 const program = new Command();
 
@@ -46,11 +47,11 @@ themesCommand
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     if (!options.name && !options.published) {
-      console.error('Error: Either --name or --published flag is required');
+      Logger.error('Either --name or --published flag is required');
       process.exit(1);
     }
     if (options.name && options.published) {
-      console.error('Error: Cannot use both --name and --published flags together');
+      Logger.error('Cannot use both --name and --published flags together');
       process.exit(1);
     }
     await themesPullCommand({
@@ -76,11 +77,11 @@ themesCommand
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     if (!options.name && !options.published) {
-      console.error('Error: Either --name or --published flag is required');
+      Logger.error('Either --name or --published flag is required');
       process.exit(1);
     }
     if (options.name && options.published) {
-      console.error('Error: Cannot use both --name and --published flags together');
+      Logger.error('Cannot use both --name and --published flags together');
       process.exit(1);
     }
     await themesPushCommand({
@@ -168,19 +169,19 @@ program
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
     const validComponents = ['theme', 'files', 'pages'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
-    
+
     if (invalid.length > 0) {
-      console.error(`Invalid components: ${invalid.join(', ')}`);
-      console.error(`Valid components are: ${validComponents.join(', ')}`);
+      Logger.error(`Invalid components: ${invalid.join(', ')}`);
+      Logger.error(`Valid components are: ${validComponents.join(', ')}`);
       process.exit(1);
     }
 
-    console.log(`Pulling components: ${components.join(', ')}`);
+    Logger.info(`Pulling components: ${components.join(', ')}`);
 
     for (const component of components) {
-      console.log(`\n${'='.repeat(80)}`);
-      console.log(`Pulling ${component}...`);
-      console.log('='.repeat(80));
+      Logger.info(`\n${'='.repeat(80)}`);
+      Logger.info(`Pulling ${component}...`);
+      Logger.info('='.repeat(80));
 
       try {
         if (component === 'theme') {
@@ -210,17 +211,17 @@ program
             accessToken: options.accessToken
           });
         }
-        console.log(`✓ ${component} pull completed`);
+        Logger.success(`${component} pull completed`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`✗ ${component} pull failed: ${message}`);
+        Logger.error(`${component} pull failed: ${message}`);
         process.exit(1);
       }
     }
 
-    console.log(`\n${'='.repeat(80)}`);
-    console.log('All components pulled successfully');
-    console.log('='.repeat(80));
+    Logger.info(`\n${'='.repeat(80)}`);
+    Logger.success('All components pulled successfully');
+    Logger.info('='.repeat(80));
   });
 
 program
@@ -237,24 +238,24 @@ program
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
     const validComponents = ['theme', 'files', 'pages'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
-    
+
     if (invalid.length > 0) {
-      console.error(`Invalid components: ${invalid.join(', ')}`);
-      console.error(`Valid components are: ${validComponents.join(', ')}`);
+      Logger.error(`Invalid components: ${invalid.join(', ')}`);
+      Logger.error(`Valid components are: ${validComponents.join(', ')}`);
       process.exit(1);
     }
 
-    console.log(`Pushing components: ${components.join(', ')}`);
+    Logger.info(`Pushing components: ${components.join(', ')}`);
 
     for (const component of components) {
-      console.log(`\n${'='.repeat(80)}`);
-      console.log(`Pushing ${component}...`);
-      console.log('='.repeat(80));
+      Logger.info(`\n${'='.repeat(80)}`);
+      Logger.info(`Pushing ${component}...`);
+      Logger.info('='.repeat(80));
 
       try {
         if (component === 'theme') {
           if (!options.themeName) {
-            console.error('Error: --theme-name is required when pushing theme component');
+            Logger.error('--theme-name is required when pushing theme component');
             process.exit(1);
           }
           await themesPushCommand({
@@ -282,17 +283,17 @@ program
             accessToken: options.accessToken
           });
         }
-        console.log(`✓ ${component} push completed`);
+        Logger.success(`${component} push completed`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`✗ ${component} push failed: ${message}`);
+        Logger.error(`${component} push failed: ${message}`);
         process.exit(1);
       }
     }
 
-    console.log(`\n${'='.repeat(80)}`);
-    console.log('All components pushed successfully');
-    console.log('='.repeat(80));
+    Logger.info(`\n${'='.repeat(80)}`);
+    Logger.success('All components pushed successfully');
+    Logger.info('='.repeat(80));
   });
 
 // Show help by default if no command provided
