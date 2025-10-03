@@ -308,11 +308,9 @@ export class ShopifyThemes {
                     // Text file - write as utf8
                     fs.writeFileSync(filePath, content, 'utf8');
                 }
-
-                // Note: We don't need to set timestamps anymore since we always sync everything
-
-            } catch (error: any) {
-                console.warn(`Failed to download ${asset.key}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to download ${asset.key}: ${message}`);
             }
         }
     }
@@ -353,7 +351,6 @@ export class ShopifyThemes {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-
     private isValidThemeStructure(themePath: string): boolean {
         if (!fs.existsSync(themePath)) {
             return false;
@@ -391,8 +388,9 @@ export class ShopifyThemes {
 
             try {
                 await rateLimitedUpload(file);
-            } catch (error: any) {
-                console.warn(`Failed to upload ${file.key}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to upload ${file.key}: ${message}`);
             }
         }
     }
@@ -460,8 +458,9 @@ export class ShopifyThemes {
 
             try {
                 await rateLimitedDelete(asset);
-            } catch (error: any) {
-                console.warn(`Failed to delete ${asset.key}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to delete ${asset.key}: ${message}`);
             }
         }
     }
@@ -499,8 +498,6 @@ export class ShopifyThemes {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-
-
     private deleteLocalFiles(outputPath: string, filesToDelete: string[]): void {
         filesToDelete.forEach(file => {
             const filePath = path.join(outputPath, file);
@@ -509,15 +506,13 @@ export class ShopifyThemes {
                     fs.unlinkSync(filePath);
                     console.log(`Deleted local file: ${file}`);
                 }
-            } catch (error: any) {
-                console.warn(`Failed to delete local file ${file}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to delete local file ${file}: ${message}`);
             }
         });
     }
 
-    /**
-     * Find local files that should be deleted (not present in remote assets)
-     */
     private findLocalFilesToDelete(outputPath: string, remoteAssetKeys: Set<string>): string[] {
         const localFilesToDelete: string[] = [];
 
@@ -562,8 +557,9 @@ export async function themesPullCommand(options: {
 
         await themes.pull(options.themeName || null, options.output, site, accessToken, undefined, options.dryRun || false, options.mirror || false, options.published || false);
 
-    } catch (error: any) {
-        console.error(`Failed to pull theme: ${error.message}`);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to pull theme: ${message}`);
         process.exit(1);
     }
 }
@@ -599,8 +595,9 @@ export async function themesPushCommand(options: {
 
         await themes.push(options.themeName || null, options.input, site, accessToken, options.dryRun || false, options.mirror || false, options.published || false);
 
-    } catch (error: any) {
-        console.error(`Failed to push theme: ${error.message}`);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to push theme: ${message}`);
         process.exit(1);
     }
 }

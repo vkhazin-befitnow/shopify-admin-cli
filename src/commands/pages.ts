@@ -199,8 +199,9 @@ export class ShopifyPages {
             try {
                 fs.unlinkSync(filePath);
                 console.log(`Deleted local file: ${file}`);
-            } catch (error: any) {
-                console.warn(`Failed to delete ${file}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to delete ${file}: ${message}`);
             }
         });
     }
@@ -217,8 +218,9 @@ export class ShopifyPages {
 
             try {
                 await rateLimitedDownload(page);
-            } catch (error: any) {
-                console.warn(`Failed to download ${page.handle}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to download ${page.handle}: ${message}`);
             }
         }
     }
@@ -288,8 +290,9 @@ export class ShopifyPages {
 
             try {
                 await rateLimitedUpload(file);
-            } catch (error: any) {
-                console.warn(`Failed to upload ${file.handle}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to upload ${file.handle}: ${message}`);
             }
         }
     }
@@ -326,8 +329,9 @@ export class ShopifyPages {
 
             try {
                 await rateLimitedDelete(page);
-            } catch (error: any) {
-                console.warn(`Failed to delete ${page.handle}: ${error.message}`);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Failed to delete ${page.handle}: ${message}`);
             }
         }
     }

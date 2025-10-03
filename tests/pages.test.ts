@@ -71,8 +71,7 @@ describe('Shopify Pages', () => {
             const firstPagePath = path.join(actualPagesPath, htmlFiles[0]);
             const content = fs.readFileSync(firstPagePath, 'utf8');
 
-            // Check for page metadata in comment
-            assert.ok(content.includes('<!-- Page:'), 'Page should contain metadata header');
+            // Pages are saved as-is from Shopify without metadata headers
             assert.ok(content.length > 0, 'Page should have content');
         }
 
@@ -289,11 +288,11 @@ Template: page
         console.log('Push command with all parameters completed successfully');
     });
 
-    test('Page Content Parsing and Metadata Handling', async () => {
+    test('Page Content Preserved As-Is', async () => {
         const creds = getCredentials();
         assert.ok(creds, 'Test credentials should be available');
 
-        const testPagesPath = path.join(TEST_RUN_DIR, 'pages-metadata-test');
+        const testPagesPath = path.join(TEST_RUN_DIR, 'pages-content-test');
         cleanupTestDirectory(testPagesPath);
 
         // Pull some pages first
@@ -310,18 +309,16 @@ Template: page
                 const pageFile = path.join(actualPagesPath, htmlFiles[0]);
                 const content = fs.readFileSync(pageFile, 'utf8');
 
-                // Test metadata parsing
-                const instance = pages as any; // Access private method for testing
-                const handle = htmlFiles[0].replace('.html', '');
-                const parsedData = instance.parsePageContent(content, handle);
+                // Verify content is saved as-is without metadata headers
+                assert.ok(typeof content === 'string', 'Content should be a string');
+                assert.ok(content.length > 0, 'Content should not be empty');
+                
+                // Content should NOT contain our metadata headers
+                assert.ok(!content.startsWith('<!-- Page:'), 'Content should not have metadata header added');
 
-                assert.ok(parsedData.title, 'Should parse title from content');
-                assert.ok(parsedData.handle, 'Should have handle');
-                assert.ok(typeof parsedData.body_html === 'string', 'Should have body_html as string');
-
-                console.log('Page content parsing and metadata handling verified');
+                console.log('Page content verified to be preserved as-is from Shopify');
             } else {
-                console.log('No pages available for metadata testing (store might have no pages)');
+                console.log('No pages available for content testing (store might have no pages)');
             }
         }
     });

@@ -101,9 +101,10 @@ export class ShopifyAuth {
 
       return result;
 
-    } catch (error: any) {
-      if (error.message.includes('fetch')) {
-        throw new Error(`Network error: ${error.message}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('fetch')) {
+        throw new Error(`Network error: ${message}`);
       }
       throw error;
     }
@@ -126,8 +127,9 @@ export async function authValidateCommand(site?: string, accessToken?: string): 
       console.log('No scopes granted');
     }
 
-  } catch (error: any) {
-    console.error(`Validation failed: ${error.message}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Validation failed: ${message}`);
     process.exit(1);
   }
 }

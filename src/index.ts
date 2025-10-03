@@ -211,8 +211,9 @@ program
           });
         }
         console.log(`✓ ${component} pull completed`);
-      } catch (error: any) {
-        console.error(`✗ ${component} pull failed: ${error.message}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`✗ ${component} pull failed: ${message}`);
         process.exit(1);
       }
     }
@@ -282,8 +283,9 @@ program
           });
         }
         console.log(`✓ ${component} push completed`);
-      } catch (error: any) {
-        console.error(`✗ ${component} push failed: ${error.message}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`✗ ${component} push failed: ${message}`);
         process.exit(1);
       }
     }

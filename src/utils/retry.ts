@@ -12,14 +12,6 @@ export interface RetryOptions {
     retryableErrors?: string[];
 }
 
-export interface RetryResult<T> {
-    success: boolean;
-    data?: T;
-    error?: Error;
-    attempts: number;
-    totalDelayMs: number;
-}
-
 export class RetryUtility {
     private static readonly DEFAULT_OPTIONS: Required<RetryOptions> = {
         maxAttempts: 5,
@@ -53,8 +45,8 @@ export class RetryUtility {
         for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
             try {
                 return await fn();
-            } catch (error: any) {
-                lastError = error;
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
 
                 // Don't retry on last attempt
                 if (attempt === opts.maxAttempts) {
@@ -70,7 +62,8 @@ export class RetryUtility {
                 const delay = this.calculateDelay(attempt, opts);
                 totalDelayMs += delay;
 
-                console.warn(`Attempt ${attempt}/${opts.maxAttempts} failed: ${error.message}. Retrying in ${delay}ms...`);
+                const message = error instanceof Error ? error.message : String(error);
+                console.warn(`Attempt ${attempt}/${opts.maxAttempts} failed: ${message}. Retrying in ${delay}ms...`);
 
                 await this.sleep(delay);
             }
