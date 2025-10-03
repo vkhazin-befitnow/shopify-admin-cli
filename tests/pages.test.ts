@@ -161,15 +161,12 @@ describe('Shopify Pages', () => {
         // First pull to have test data
         await pages.pull(testPagesPath, creds.site, creds.accessToken, 2);
 
-        // The pull creates a 'pages' subfolder, so push should look there
-        const actualPagesPath = path.join(testPagesPath, 'pages');
-
-        // Test dry run (should not throw errors and should complete)
+        // Push uses root path (expects root/pages/)
         await assert.doesNotReject(
             async () => {
-                await pages.push(actualPagesPath, creds.site, creds.accessToken, true);
+                await pages.push(testPagesPath, creds.site, creds.accessToken, true);
             },
-            'Dry run push should not throw errors'
+            'Dry run push should not throw errors with root path'
         );
 
         console.log('Dry run push completed successfully');
@@ -185,10 +182,8 @@ describe('Shopify Pages', () => {
         // First pull to ensure we have pages to work with
         await pages.pull(testPagesPath, creds.site, creds.accessToken, 1);
 
-        // The pull creates a 'pages' subfolder
-        const actualPagesPath = path.join(testPagesPath, 'pages');
-
         // Create or modify a test page to ensure there's something to push
+        const actualPagesPath = path.join(testPagesPath, 'pages');
         const testPagePath = path.join(actualPagesPath, 'test-push-verification.html');
         const testContent = `<!-- Page Metadata
 Title: Test Push Verification
@@ -204,12 +199,12 @@ Template: page
 
         fs.writeFileSync(testPagePath, testContent);
 
-        // Perform real push (this should not throw if it succeeds)
+        // Perform real push using root path (expects root/pages/)
         await assert.doesNotReject(
             async () => {
-                await pages.push(actualPagesPath, creds.site, creds.accessToken, false);
+                await pages.push(testPagesPath, creds.site, creds.accessToken, false);
             },
-            'Real push should not throw errors'
+            'Real push should not throw errors with root path'
         );
 
         // Verify the push worked by fetching pages and looking for our test page
@@ -236,16 +231,13 @@ Template: page
         // First pull to have test data
         await pages.pull(testPagesPath, creds.site, creds.accessToken, 1);
 
-        // The pull creates a 'pages' subfolder
-        const actualPagesPath = path.join(testPagesPath, 'pages');
-
-        // Test mirror mode dry run - should show what would be deleted/updated
+        // Test mirror mode dry run using root path
         let output = '';
         const originalLog = console.log;
         console.log = (msg: any) => { output += msg + '\n'; };
 
         try {
-            await pages.push(actualPagesPath, creds.site, creds.accessToken, true, true);
+            await pages.push(testPagesPath, creds.site, creds.accessToken, true, true);
         } finally {
             console.log = originalLog;
         }
@@ -263,8 +255,10 @@ Template: page
         const testPagesPath = path.join(TEST_RUN_DIR, 'pages-push-command-test');
         cleanupTestDirectory(testPagesPath);
 
-        // Create a simple test page
-        fs.mkdirSync(testPagesPath, { recursive: true });
+        // Create pages subfolder structure (root/pages/)
+        const actualPagesPath = path.join(testPagesPath, 'pages');
+        fs.mkdirSync(actualPagesPath, { recursive: true });
+        
         const testPageContent = `<!-- Page Metadata
 Title: Command Test Page
 Handle: command-test-page
@@ -276,9 +270,9 @@ Template: page
 <h1>Command Test Page</h1>
 <p>This page is used to test the push command functionality.</p>`;
 
-        fs.writeFileSync(path.join(testPagesPath, 'command-test-page.html'), testPageContent);
+        fs.writeFileSync(path.join(actualPagesPath, 'command-test-page.html'), testPageContent);
 
-        // Test pagesPushCommand with dry-run and mirror parameters
+        // Test pagesPushCommand using root path (expects root/pages/)
         await assert.doesNotReject(
             async () => {
                 await pagesPushCommand({
@@ -289,7 +283,7 @@ Template: page
                     accessToken: creds.accessToken
                 });
             },
-            'Push command should handle all parameters correctly'
+            'Push command should handle all parameters with root path correctly'
         );
 
         console.log('Push command with all parameters completed successfully');

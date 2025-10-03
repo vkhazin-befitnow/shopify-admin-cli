@@ -126,37 +126,6 @@ async function testCustomRetryableErrors() {
     console.log('Custom retryable errors test passed');
 }
 
-async function testDetailedRetryResult() {
-    console.log('Testing detailed retry result...');
-
-    const fn = createFailingFunction(2);
-
-    const result = await RetryUtility.withRetryDetailed(fn, {
-        maxAttempts: 5,
-        baseDelayMs: 10
-    });
-
-    assert.equal(result.success, true);
-    assert.equal(result.data, 'Success on attempt 3');
-    assert.equal(result.attempts, 3);
-    assert(result.totalDelayMs > 0);
-    assert(!result.error);
-
-    // Test failure case
-    const alwaysFailFn = createFailingFunction(10);
-    const failResult = await RetryUtility.withRetryDetailed(alwaysFailFn, {
-        maxAttempts: 2,
-        baseDelayMs: 10
-    });
-
-    assert.equal(failResult.success, false);
-    assert(!failResult.data);
-    assert.equal(failResult.attempts, 2);
-    assert(failResult.error);
-    assert(failResult.totalDelayMs > 0);
-
-    console.log('Detailed retry result test passed');
-}
 
 async function testExponentialBackoff() {
     console.log('Testing exponential backoff timing...');
@@ -243,7 +212,6 @@ async function runTests() {
         await testRetryExhaustion();
         await testRetryableStatusCodes();
         await testCustomRetryableErrors();
-        await testDetailedRetryResult();
         await testExponentialBackoff();
         await testRateLimited();
         await testMaxDelayLimit();

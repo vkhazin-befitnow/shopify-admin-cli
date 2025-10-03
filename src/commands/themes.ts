@@ -4,6 +4,7 @@ import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
 import { getCredentialsFromEnv } from '../utils/auth';
+import { IOUtility } from '../utils/io';
 
 interface Theme {
     id: number;
@@ -71,7 +72,7 @@ export class ShopifyThemes {
             }
         }
 
-        const finalOutputPath = this.resolveThemePath(outputPath, theme.name, false);
+        const finalOutputPath = IOUtility.buildResourcePath(outputPath, 'themes', theme.name);
         console.log(`${dryRun ? 'Would pull' : 'Pulling'} theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
 
         let assets = await this.fetchThemeAssets(site, accessToken, theme.id);
@@ -80,39 +81,23 @@ export class ShopifyThemes {
             assets = assets.slice(0, maxAssets);
             console.log(`Limited to first ${assets.length} assets for testing`);
         } else {
-            console.log(`Found ${assets.length} remote assets`);
+            console.log(`Found ${assets.length} remote assets to sync`);
         }
 
-        // Simple approach: always sync all files for reliability
-        const toDownload: Asset[] = [];
-        const toUpdate: Asset[] = [];
         const toDelete: string[] = [];
 
-        // Check each asset
-        assets.forEach(asset => {
-            const localFilePath = path.join(finalOutputPath, asset.key);
-            if (!fs.existsSync(localFilePath)) {
-                toDownload.push(asset);
-            } else {
-                toUpdate.push(asset);
-            }
-        });
-
-        // Find local files to delete (only in mirror mode)
         if (mirror) {
             const remoteAssetKeys = new Set(assets.map(asset => asset.key));
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteAssetKeys));
-        }
-
-        console.log(`Assets to download: ${toDownload.length} new, ${toUpdate.length} updated, ${assets.length - toDownload.length - toUpdate.length} unchanged`);
-        if (mirror && toDelete.length > 0) {
-            console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+            
+            if (toDelete.length > 0) {
+                console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+            }
         }
 
         if (dryRun) {
             console.log('\nDRY RUN SUMMARY:');
-            console.log(`Assets to download (new): ${toDownload.length}`);
-            console.log(`Assets to update (modified): ${toUpdate.length}`);
+            console.log(`Assets to sync: ${assets.length}`);
             if (mirror && toDelete.length > 0) {
                 console.log(`Local files to delete: ${toDelete.length}`);
                 toDelete.slice(0, 10).forEach((file: string) => console.log(`  - ${file}`));
@@ -124,19 +109,16 @@ export class ShopifyThemes {
         }
 
         // Create output directory structure only when actually downloading
-        this.createOutputDirectory(finalOutputPath);
+        IOUtility.ensureDirectoryExists(finalOutputPath);
 
-        // Delete local files not present remotely (only in mirror mode)
         if (mirror && toDelete.length > 0) {
             this.deleteLocalFiles(finalOutputPath, toDelete);
         }
 
-        // Download files that need it (new assets + updated assets)
-        const assetsToDownload = [...toDownload, ...toUpdate];
-        if (assetsToDownload.length > 0) {
-            await this.downloadAssets(site, accessToken, theme.id, assetsToDownload, finalOutputPath);
+        if (assets.length > 0) {
+            await this.downloadAssets(site, accessToken, theme.id, assets, finalOutputPath);
         } else {
-            console.log('No assets need to be downloaded - all files are already up to date');
+            console.log('No assets to sync');
         }
 
         console.log(`Successfully pulled theme "${theme.name}" to ${finalOutputPath}`);
@@ -166,35 +148,15 @@ export class ShopifyThemes {
             }
         }
 
-        // Determine the theme folder path
-        const themeFolder = this.resolveThemePath(inputPath, theme.name, true);
+        const themeFolder = this.resolveThemePath(inputPath, theme.name);
         console.log(`${dryRun ? 'Would push' : 'Pushing'} local theme files from "${themeFolder}" to theme "${theme.name}" (ID: ${theme.id})`);
 
-        // Collect all local files to upload
         const localFiles = this.collectLocalThemeFiles(themeFolder);
 
-        // Get current remote assets for comparison
         const remoteAssets = await this.fetchThemeAssets(site, accessToken, theme.id);
 
-        // Simple approach: always sync all files for reliability
-        const remoteAssetMap = new Map<string, Asset>();
-        remoteAssets.forEach(asset => remoteAssetMap.set(asset.key, asset));
-
-        const toUpload: Array<{ key: string, filePath: string, isImage: boolean }> = [];
-        const toUpdate: Array<{ key: string, filePath: string, isImage: boolean }> = [];
         const toDelete: Asset[] = [];
 
-        // Check local files against remote
-        localFiles.forEach(localFile => {
-            const remoteAsset = remoteAssetMap.get(localFile.key);
-            if (!remoteAsset) {
-                toUpload.push(localFile);
-            } else {
-                toUpdate.push(localFile);
-            }
-        });
-
-        // Check for remote files that don't exist locally (only in mirror mode)
         if (mirror) {
             const localFileMap = new Map<string, { key: string, filePath: string, isImage: boolean }>();
             localFiles.forEach(file => localFileMap.set(file.key, file));
@@ -204,28 +166,33 @@ export class ShopifyThemes {
                     toDelete.push(remoteAsset);
                 }
             });
+
+            if (toDelete.length > 0) {
+                console.log(`Mirror mode: ${toDelete.length} remote files will be deleted`);
+            }
         }
 
-        console.log(`Found ${localFiles.length} local files`);
-        console.log(`Files to upload: ${toUpload.length} new, ${toUpdate.length} updated, ${localFiles.length - toUpload.length - toUpdate.length} unchanged`);
-        if (mirror && toDelete.length > 0) {
-            console.log(`Mirror mode: ${toDelete.length} remote files will be deleted`);
-        }
+        console.log(`Found ${localFiles.length} local files to upload`);
 
         if (dryRun) {
-            dryRunManager.logDryRunSummary({ toUpload, toUpdate, toDelete });
+            console.log('\nDRY RUN SUMMARY:');
+            console.log(`Files to upload: ${localFiles.length}`);
+            if (mirror && toDelete.length > 0) {
+                console.log(`Remote files to delete: ${toDelete.length}`);
+                toDelete.slice(0, 10).forEach(asset => console.log(`  - ${asset.key}`));
+                if (toDelete.length > 10) {
+                    console.log(`  ... and ${toDelete.length - 10} more files`);
+                }
+            }
             return;
         }
 
-        // Upload files that need it (new files + updated files)
-        const filesToUpload = [...toUpload, ...toUpdate];
-        if (filesToUpload.length > 0) {
-            await this.uploadAssets(site, accessToken, theme.id, filesToUpload);
+        if (localFiles.length > 0) {
+            await this.uploadAssets(site, accessToken, theme.id, localFiles);
         } else {
-            console.log('No files need to be uploaded - all files are already up to date');
+            console.log('No files to upload');
         }
 
-        // Delete remote files not present locally (only in mirror mode)
         if (mirror && toDelete.length > 0) {
             await this.deleteAssets(site, accessToken, theme.id, toDelete);
         }
@@ -261,47 +228,24 @@ export class ShopifyThemes {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private resolveThemePath(basePath: string, themeName: string, requireExists: boolean = false): string {
-        // Try multiple possible locations for the theme folder
-        const possiblePaths = [
-            basePath, // Direct path to theme folder
-            path.join(basePath, 'themes'), // parent/themes (without theme name)
-            path.join(basePath, 'themes', themeName) // parent/themes/theme-name
-        ];
-
-        for (const possiblePath of possiblePaths) {
-            if (requireExists) {
-                // For push: verify theme structure exists
-                if (this.isValidThemeStructure(possiblePath)) {
-                    return possiblePath;
-                }
-            } else {
-                // For pull: return first valid-looking path (will be created)
-                // Prefer paths ending with theme name
-                if (path.basename(possiblePath) === themeName) {
-                    return possiblePath;
-                }
-            }
+    private resolveThemePath(basePath: string, themeName: string): string {
+        const themePath = IOUtility.buildResourcePath(basePath, 'themes', themeName);
+        
+        if (!fs.existsSync(themePath)) {
+            throw new Error(
+                `Theme directory not found: ${themePath}\n` +
+                `Expected structure: ${basePath}/themes/${themeName}/`
+            );
         }
 
-        // Default fallback for pull operations
-        if (!requireExists) {
-            const endsWithThemes = path.basename(basePath).toLowerCase() === 'themes';
-            const finalPath = endsWithThemes 
-                ? path.join(basePath, themeName)
-                : path.join(basePath, 'themes', themeName);
-            return finalPath;
+        if (!this.isValidThemeStructure(themePath)) {
+            throw new Error(
+                `Invalid theme structure in: ${themePath}\n` +
+                `Expected Shopify theme directories: assets, config, layout, locales, sections, snippets, templates`
+            );
         }
 
-        throw new Error(
-            `Could not find valid theme structure for "${themeName}". ` +
-            `Tried:\n  - ${possiblePaths.join('\n  - ')}\n` +
-            `Expected Shopify theme directories: assets, config, layout, locales, sections, snippets, templates`
-        );
-    }
-
-    private createOutputDirectory(outputPath: string): void {
-        fs.mkdirSync(outputPath, { recursive: true });
+        return themePath;
     }
 
     private async fetchThemeAssets(site: string, accessToken: string, themeId: number): Promise<Asset[]> {
@@ -424,32 +368,14 @@ export class ShopifyThemes {
     private collectLocalThemeFiles(themeFolder: string): Array<{ key: string, filePath: string, isImage: boolean }> {
         const files: Array<{ key: string, filePath: string, isImage: boolean }> = [];
 
-        // Recursively find all files in the theme folder
-        const walkDir = (dir: string, baseDir: string) => {
-            if (!fs.existsSync(dir)) return;
-
-            const items = fs.readdirSync(dir);
-            items.forEach(item => {
-                const itemPath = path.join(dir, item);
-                const stat = fs.statSync(itemPath);
-
-                if (stat.isDirectory()) {
-                    walkDir(itemPath, baseDir);
-                } else if (stat.isFile()) {
-                    const relativePath = path.relative(baseDir, itemPath);
-                    const key = relativePath.replace(/\\/g, '/'); // Normalize path separators
-                    const isImage = this.isImageFile(itemPath);
-
-                    files.push({
-                        key: key,
-                        filePath: itemPath,
-                        isImage
-                    });
-                }
+        IOUtility.walkDirectory(themeFolder, (filePath, relativePath) => {
+            files.push({
+                key: relativePath,
+                filePath: filePath,
+                isImage: IOUtility.isBinaryFile(filePath)
             });
-        };
+        });
 
-        walkDir(themeFolder, themeFolder);
         return files;
     }
 
@@ -587,51 +513,6 @@ export class ShopifyThemes {
                 console.warn(`Failed to delete local file ${file}: ${error.message}`);
             }
         });
-
-        // Clean up empty directories
-        this.cleanupEmptyDirectories(outputPath);
-    }
-
-    private cleanupEmptyDirectories(outputPath: string): void {
-        const walkDir = (dir: string) => {
-            if (!fs.existsSync(dir)) return;
-
-            const items = fs.readdirSync(dir);
-            items.forEach(item => {
-                const itemPath = path.join(dir, item);
-                const stat = fs.statSync(itemPath);
-
-                if (stat.isDirectory()) {
-                    walkDir(itemPath);
-
-                    // Check if directory is empty after cleanup
-                    try {
-                        const remainingItems = fs.readdirSync(itemPath);
-                        if (remainingItems.length === 0 && itemPath !== outputPath) {
-                            fs.rmdirSync(itemPath);
-                            console.log(`Removed empty directory: ${path.relative(outputPath, itemPath)}`);
-                        }
-                    } catch (error) {
-                        // Directory might not be empty or might not exist
-                    }
-                }
-            });
-        };
-
-        walkDir(outputPath);
-    }
-
-    /**
-     * Check if a file is a binary/image file based on extension
-     */
-    private isImageFile(filePath: string): boolean {
-        const binaryExtensions = [
-            '.jpg', '.jpeg', '.png', '.gif', '.svg', '.ico',
-            '.woff', '.woff2', '.ttf', '.eot', '.pdf', '.zip',
-            '.mp4', '.webm', '.mp3', '.wav', '.webp'
-        ];
-        const ext = path.extname(filePath).toLowerCase();
-        return binaryExtensions.includes(ext);
     }
 
     /**
@@ -640,28 +521,12 @@ export class ShopifyThemes {
     private findLocalFilesToDelete(outputPath: string, remoteAssetKeys: Set<string>): string[] {
         const localFilesToDelete: string[] = [];
 
-        const walkDir = (dir: string, baseDir: string) => {
-            if (!fs.existsSync(dir)) return;
+        IOUtility.walkDirectory(outputPath, (filePath, relativePath) => {
+            if (!remoteAssetKeys.has(relativePath)) {
+                localFilesToDelete.push(relativePath);
+            }
+        });
 
-            const items = fs.readdirSync(dir);
-            items.forEach(item => {
-                const itemPath = path.join(dir, item);
-                const stat = fs.statSync(itemPath);
-
-                if (stat.isDirectory()) {
-                    walkDir(itemPath, baseDir);
-                } else if (stat.isFile()) {
-                    const relativePath = path.relative(baseDir, itemPath);
-                    const key = relativePath.replace(/\\/g, '/'); // Normalize path separators
-
-                    if (!remoteAssetKeys.has(key)) {
-                        localFilesToDelete.push(key);
-                    }
-                }
-            });
-        };
-
-        walkDir(outputPath, outputPath);
         return localFilesToDelete;
     }
 }

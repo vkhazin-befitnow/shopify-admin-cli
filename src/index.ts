@@ -37,18 +37,28 @@ const themesCommand = program
 themesCommand
   .command('pull')
   .description('Download a theme to local directory')
-  .requiredOption('--name <name>', 'Theme name to download (e.g., "Dawn", "Horizon")')
+  .option('--name <name>', 'Theme name to download (e.g., "Dawn", "Horizon")')
+  .option('--published', 'Pull the published/main theme')
   .requiredOption('--output <path>', 'Output directory path')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
+    if (!options.name && !options.published) {
+      console.error('Error: Either --name or --published flag is required');
+      process.exit(1);
+    }
+    if (options.name && options.published) {
+      console.error('Error: Cannot use both --name and --published flags together');
+      process.exit(1);
+    }
     await themesPullCommand({
-      published: true,
+      themeName: options.name || undefined,
       output: options.output,
       dryRun: options.dryRun || false,
       mirror: options.mirror || false,
+      published: options.published || false,
       site: options.site,
       accessToken: options.accessToken
     });
@@ -57,18 +67,28 @@ themesCommand
 themesCommand
   .command('push')
   .description('Upload local theme files to store')
-  .requiredOption('--name <name>', 'Theme name to upload to (e.g., "Dawn", "Horizon")')
+  .option('--name <name>', 'Theme name to upload to (e.g., "Dawn", "Horizon")')
+  .option('--published', 'Push to the published/main theme')
   .requiredOption('--input <path>', 'Input directory path containing theme files')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
+    if (!options.name && !options.published) {
+      console.error('Error: Either --name or --published flag is required');
+      process.exit(1);
+    }
+    if (options.name && options.published) {
+      console.error('Error: Cannot use both --name and --published flags together');
+      process.exit(1);
+    }
     await themesPushCommand({
-      themeName: options.name,
+      themeName: options.name || undefined,
       input: options.input,
       dryRun: options.dryRun || false,
       mirror: options.mirror || false,
+      published: options.published || false,
       site: options.site,
       accessToken: options.accessToken
     });
@@ -139,6 +159,7 @@ program
   .description('Pull all or specified components from Shopify store')
   .requiredOption('--output <path>', 'Output directory path')
   .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages)', 'theme,files,pages')
+  .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
@@ -164,10 +185,11 @@ program
       try {
         if (component === 'theme') {
           await themesPullCommand({
+            themeName: options.themeName || undefined,
             output: options.output,
             dryRun: options.dryRun || false,
             mirror: options.mirror || false,
-            published: true,
+            published: !options.themeName,
             site: options.site,
             accessToken: options.accessToken
           });

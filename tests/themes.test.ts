@@ -50,9 +50,9 @@ describe('Shopify Themes', () => {
         // Pull theme with limited assets for testing
         await themes.pull(creds.testThemeName, testOutputPath, creds.site, creds.accessToken, 3, false, false, false);
 
-        // Verify theme folder was created with proper structure (output/themes/[ThemeName]/)
+        // Verify theme folder was created at root/themes/[ThemeName]/
         const actualThemePath = path.join(testOutputPath, 'themes', creds.testThemeName);
-        assert.ok(fs.existsSync(actualThemePath), 'Theme folder should exist at output/themes/[ThemeName]/');
+        assert.ok(fs.existsSync(actualThemePath), 'Theme folder should exist at root/themes/[ThemeName]/');
 
         // Verify standard Shopify theme directories
         const expectedDirs = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
@@ -173,12 +173,12 @@ describe('Shopify Themes', () => {
         // First pull to have test data
         await themes.pull(creds.testThemeName, testOutputPath, creds.site, creds.accessToken, 2, false, false, false);
 
-        // Push with smart path resolution (will find theme in output/themes/[ThemeName]/)
+        // Push using root path (expects root/themes/[ThemeName]/)
         await assert.doesNotReject(
             async () => {
                 await themes.push(creds.testThemeName, testOutputPath, creds.site, creds.accessToken, true, false, false);
             },
-            'Dry run push should not throw errors and should resolve path automatically'
+            'Dry run push should not throw errors with root path'
         );
     });
 
@@ -191,12 +191,12 @@ describe('Shopify Themes', () => {
         // First pull published theme to have test data
         await themes.pull(null, testOutputPath, creds.site, creds.accessToken, 2, false, false, true);
 
-        // Test dry run push to published theme with smart path resolution
+        // Test dry run push to published theme using root path
         await assert.doesNotReject(
             async () => {
                 await themes.push(null, testOutputPath, creds.site, creds.accessToken, true, false, true);
             },
-            'Dry run push to published theme should not throw errors and should resolve path automatically'
+            'Dry run push to published theme should not throw errors with root path'
         );
     });
 
@@ -215,7 +215,7 @@ describe('Shopify Themes', () => {
         const testContent = `// Test file created at ${new Date().toISOString()}\nconsole.log('Push test verification');`;
         fs.writeFileSync(testFilePath, testContent);
 
-        // Perform real push with smart path resolution
+        // Perform real push using root path
         await themes.push(creds.testThemeName, testOutputPath, creds.site, creds.accessToken, false, false, false);
 
         // Verify the push worked by checking if our test file exists remotely
@@ -291,7 +291,7 @@ describe('Shopify Themes', () => {
         // First pull to have test data
         await themes.pull(creds.testThemeName, testOutputPath, creds.site, creds.accessToken, 1, false, false, false);
 
-        // Test themesPushCommand with mirror parameter and smart path resolution (dry-run)
+        // Test themesPushCommand with mirror parameter using root path (dry-run)
         await assert.doesNotReject(
             async () => {
                 await themesPushCommand({
@@ -303,7 +303,7 @@ describe('Shopify Themes', () => {
                     accessToken: creds.accessToken
                 });
             },
-            'Push command should handle mirror parameter and path resolution correctly'
+            'Push command should handle mirror parameter with root path correctly'
         );
     });
 
@@ -337,7 +337,7 @@ describe('Shopify Themes', () => {
         // First pull published theme to have test data
         await themes.pull(null, testOutputPath, creds.site, creds.accessToken, 1, false, false, true);
 
-        // Test themesPushCommand with published flag and smart path resolution
+        // Test themesPushCommand with published flag using root path
         await assert.doesNotReject(
             async () => {
                 await themesPushCommand({
@@ -348,7 +348,7 @@ describe('Shopify Themes', () => {
                     accessToken: creds.accessToken
                 });
             },
-            'Push command should handle published flag and automatically find theme folder'
+            'Push command should handle published flag with root path correctly'
         );
     });
 

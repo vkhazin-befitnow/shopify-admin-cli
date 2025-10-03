@@ -4,7 +4,7 @@
  * Tests core functionality of the ShopifyFiles class
  */
 
-import { test, describe } from 'node:test';
+import { test, describe, beforeEach, afterEach } from 'node:test';
 import * as assert from 'node:assert';
 import { ShopifyFiles } from '../src/commands/files';
 import * as fs from 'fs';
@@ -15,21 +15,20 @@ describe('ShopifyFiles', () => {
     let files: ShopifyFiles;
     const testOutputPath = path.join(__dirname, 'test-run', 'files-test');
 
-    const setup = () => {
+    beforeEach(() => {
         files = new ShopifyFiles();
         if (fs.existsSync(testOutputPath)) {
             fs.rmSync(testOutputPath, { recursive: true, force: true });
         }
-    };
+    });
 
-    const teardown = () => {
+    afterEach(() => {
         if (fs.existsSync(testOutputPath)) {
             fs.rmSync(testOutputPath, { recursive: true, force: true });
         }
-    };
+    });
 
     test('should prepare output directory', () => {
-        setup();
         const result = (files as any).prepareOutputDirectory(testOutputPath);
 
         assert.strictEqual(result, path.join(testOutputPath, 'files'));
@@ -37,7 +36,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should extract filename from URL', () => {
-        setup();
         const file = {
             id: 'gid://shopify/MediaImage/123',
             alt: 'test',
@@ -54,7 +52,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should construct local file path', () => {
-        setup();
         const file = {
             id: 'gid://shopify/GenericFile/123',
             alt: 'test',
@@ -69,7 +66,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should collect local files from directory', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -83,7 +79,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should resolve files path', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         fs.writeFileSync(path.join(filesPath, 'test.jpg'), 'content');
@@ -94,7 +89,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should identify files to delete in mirror mode', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -108,7 +102,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should delete specified files', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -125,7 +118,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should collect files with metadata', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -150,7 +142,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should preserve alt text through collection', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -173,7 +164,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should fallback to filename when no metadata exists', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -186,7 +176,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should skip .meta files in collection', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -200,7 +189,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should skip .meta files in mirror mode deletion', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -218,7 +206,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should delete .meta file when deleting main file', () => {
-        setup();
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });
         
@@ -235,8 +222,6 @@ describe('ShopifyFiles', () => {
     });
 
     test('should determine content type correctly', () => {
-        setup();
-        
         const imageFile = {
             id: 'gid://shopify/MediaImage/1',
             alt: 'test',

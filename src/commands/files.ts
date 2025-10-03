@@ -5,6 +5,7 @@ import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
 import { getCredentialsFromEnv } from '../utils/auth';
+import { IOUtility } from '../utils/io';
 
 interface FileNode {
     id: string;
@@ -136,35 +137,22 @@ export class ShopifyFiles {
 
         let files = await this.fetchFiles(site, accessToken, maxFiles);
 
-        console.log(`Found ${files.length} remote files`);
+        console.log(`Found ${files.length} remote files to sync`);
 
-        const toDownload: FileNode[] = [];
-        const toUpdate: FileNode[] = [];
         const toDelete: string[] = [];
-
-        files.forEach(file => {
-            const localFilePath = this.getFileLocalPath(finalOutputPath, file);
-            if (!fs.existsSync(localFilePath)) {
-                toDownload.push(file);
-            } else {
-                toUpdate.push(file);
-            }
-        });
 
         if (mirror) {
             const remoteFileNames = new Set(files.map(file => this.getFileName(file)));
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteFileNames));
-        }
-
-        console.log(`Files to download: ${toDownload.length} new, ${toUpdate.length} updated, ${files.length - toDownload.length - toUpdate.length} unchanged`);
-        if (mirror && toDelete.length > 0) {
-            console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+            
+            if (toDelete.length > 0) {
+                console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+            }
         }
 
         if (dryRun) {
             console.log('\nDRY RUN SUMMARY:');
-            console.log(`Files to download (new): ${toDownload.length}`);
-            console.log(`Files to update (modified): ${toUpdate.length}`);
+            console.log(`Files to sync: ${files.length}`);
             if (mirror && toDelete.length > 0) {
                 console.log(`Local files to delete: ${toDelete.length}`);
                 toDelete.slice(0, 10).forEach((file: string) => console.log(`  - ${file}`));
@@ -179,11 +167,10 @@ export class ShopifyFiles {
             this.deleteLocalFiles(finalOutputPath, toDelete);
         }
 
-        const filesToDownload = [...toDownload, ...toUpdate];
-        if (filesToDownload.length > 0) {
-            await this.downloadFiles(filesToDownload, finalOutputPath);
+        if (files.length > 0) {
+            await this.downloadFiles(files, finalOutputPath);
         } else {
-            console.log('No files need to be downloaded - all files are already up to date');
+            console.log('No files to sync');
         }
 
         console.log(`Successfully pulled files to ${finalOutputPath}`);
@@ -200,25 +187,14 @@ export class ShopifyFiles {
 
         const remoteFiles = await this.fetchFiles(site, accessToken);
 
-        const remoteFileMap = new Map<string, FileNode>();
-        remoteFiles.forEach(file => remoteFileMap.set(this.getFileName(file), file));
-
-        const toUpload: Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> = [];
-        const toUpdate: Array<{ fileName: string, filePath: string, fileId: string, metadata?: FileMetadata }> = [];
         const toDelete: Array<{ fileName: string, file: FileNode }> = [];
-
-        localFiles.forEach(localFile => {
-            const remoteFile = remoteFileMap.get(localFile.fileName);
-            if (!remoteFile) {
-                toUpload.push(localFile);
-            } else {
-                toUpdate.push({ ...localFile, fileId: remoteFile.id });
-            }
-        });
 
         if (mirror) {
             const localFileMap = new Map<string, { fileName: string, filePath: string }>();
             localFiles.forEach(file => localFileMap.set(file.fileName, file));
+
+            const remoteFileMap = new Map<string, FileNode>();
+            remoteFiles.forEach(file => remoteFileMap.set(this.getFileName(file), file));
 
             remoteFiles.forEach(remoteFile => {
                 const fileName = this.getFileName(remoteFile);
@@ -226,24 +202,31 @@ export class ShopifyFiles {
                     toDelete.push({ fileName, file: remoteFile });
                 }
             });
+
+            if (toDelete.length > 0) {
+                console.log(`Mirror mode: ${toDelete.length} remote files will be deleted`);
+            }
         }
 
-        console.log(`Found ${localFiles.length} local files`);
-        console.log(`Files to upload: ${toUpload.length} new, ${toUpdate.length} updated, ${localFiles.length - toUpload.length - toUpdate.length} unchanged`);
-        if (mirror && toDelete.length > 0) {
-            console.log(`Mirror mode: ${toDelete.length} remote files will be deleted`);
-        }
+        console.log(`Found ${localFiles.length} local files to upload`);
 
         if (dryRun) {
-            dryRunManager.logDryRunSummary({ toUpload, toUpdate, toDelete });
+            console.log('\nDRY RUN SUMMARY:');
+            console.log(`Files to upload: ${localFiles.length}`);
+            if (mirror && toDelete.length > 0) {
+                console.log(`Remote files to delete: ${toDelete.length}`);
+                toDelete.slice(0, 10).forEach(item => console.log(`  - ${item.fileName}`));
+                if (toDelete.length > 10) {
+                    console.log(`  ... and ${toDelete.length - 10} more files`);
+                }
+            }
             return;
         }
 
-        const filesToUpload = [...toUpload.map(f => ({ ...f, fileId: undefined })), ...toUpdate];
-        if (filesToUpload.length > 0) {
-            await this.uploadFiles(site, accessToken, filesToUpload);
+        if (localFiles.length > 0) {
+            await this.uploadFiles(site, accessToken, localFiles);
         } else {
-            console.log('No files need to be uploaded - all files are already up to date');
+            console.log('No files to upload');
         }
 
         if (mirror && toDelete.length > 0) {
@@ -354,13 +337,8 @@ export class ShopifyFiles {
     }
 
     private prepareOutputDirectory(outputPath: string): string {
-        const filesPath = path.basename(outputPath).toLowerCase() === 'files' 
-            ? outputPath 
-            : path.join(outputPath, 'files');
-        
-        if (!fs.existsSync(filesPath)) {
-            fs.mkdirSync(filesPath, { recursive: true });
-        }
+        const filesPath = IOUtility.buildResourcePath(outputPath, 'files');
+        IOUtility.ensureDirectoryExists(filesPath);
         return filesPath;
     }
 
@@ -502,43 +480,26 @@ export class ShopifyFiles {
     }
 
     private resolveFilesPath(basePath: string): string {
-        const possiblePaths = [
-            basePath,
-            path.join(basePath, 'files')
-        ];
-
-        // First pass: look for directories with files
-        for (const possiblePath of possiblePaths) {
-            if (fs.existsSync(possiblePath)) {
-                const stat = fs.statSync(possiblePath);
-                if (stat.isDirectory()) {
-                    const entries = fs.readdirSync(possiblePath);
-                    const hasFiles = entries.some(entry => {
-                        const entryPath = path.join(possiblePath, entry);
-                        return fs.statSync(entryPath).isFile();
-                    });
-                    if (hasFiles) {
-                        return possiblePath;
-                    }
-                }
-            }
+        const filesPath = IOUtility.buildResourcePath(basePath, 'files');
+        
+        if (!fs.existsSync(filesPath)) {
+            throw new Error(
+                `Files directory not found: ${filesPath}\n` +
+                `Expected structure: ${basePath}/files/`
+            );
         }
 
-        // Second pass: accept any existing directory (for empty directories)
-        for (const possiblePath of possiblePaths) {
-            if (fs.existsSync(possiblePath)) {
-                const stat = fs.statSync(possiblePath);
-                if (stat.isDirectory()) {
-                    return possiblePath;
-                }
-            }
+        const entries = fs.readdirSync(filesPath);
+        const hasFiles = entries.some(entry => {
+            const entryPath = path.join(filesPath, entry);
+            return fs.statSync(entryPath).isFile();
+        });
+
+        if (!hasFiles) {
+            throw new Error(`No files found in directory: ${filesPath}`);
         }
 
-        throw new Error(
-            `Could not find files folder. ` +
-            `Tried:\n  - ${possiblePaths.join('\n  - ')}\n` +
-            `Expected directory for files`
-        );
+        return filesPath;
     }
 
     private collectLocalFiles(inputPath: string): Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> {

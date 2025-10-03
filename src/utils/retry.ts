@@ -80,55 +80,6 @@ export class RetryUtility {
     }
 
     /**
-     * Execute a function with retry and return detailed result
-     */
-    static async withRetryDetailed<T>(
-        fn: () => Promise<T>,
-        options: RetryOptions = {}
-    ): Promise<RetryResult<T>> {
-        const opts = { ...this.DEFAULT_OPTIONS, ...options };
-        let lastError: Error | null = null;
-        let totalDelayMs = 0;
-
-        for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
-            try {
-                const data = await fn();
-                return {
-                    success: true,
-                    data,
-                    attempts: attempt,
-                    totalDelayMs
-                };
-            } catch (error: any) {
-                lastError = error;
-
-                // Don't retry on last attempt
-                if (attempt === opts.maxAttempts) {
-                    break;
-                }
-
-                // Check if error is retryable
-                if (!this.isRetryableError(error, opts)) {
-                    break;
-                }
-
-                // Calculate delay with exponential backoff
-                const delay = this.calculateDelay(attempt, opts);
-                totalDelayMs += delay;
-
-                await this.sleep(delay);
-            }
-        }
-
-        return {
-            success: false,
-            error: lastError || new Error('Unknown error during retry'),
-            attempts: opts.maxAttempts,
-            totalDelayMs
-        };
-    }
-
-    /**
      * Check if an error is retryable based on configuration
      */
     private static isRetryableError(error: any, options: Required<RetryOptions>): boolean {

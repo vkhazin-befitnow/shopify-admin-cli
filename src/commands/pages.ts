@@ -4,6 +4,7 @@ import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
 import { getCredentialsFromEnv } from '../utils/auth';
+import { IOUtility } from '../utils/io';
 
 interface Page {
     id: number;
@@ -29,11 +30,11 @@ export class ShopifyPages {
         const dryRunManager = new DryRunManager(dryRun);
         dryRunManager.logDryRunHeader(`Pull pages${mirror ? ' (Mirror Mode)' : ''}`);
 
-        const finalOutputPath = this.getOutputPath(outputPath);
+        const finalOutputPath = IOUtility.buildResourcePath(outputPath, 'pages');
         console.log(`${dryRun ? 'Would pull' : 'Pulling'} pages to: ${finalOutputPath}`);
         
         if (!dryRun) {
-            this.ensureDirectoryExists(finalOutputPath);
+            IOUtility.ensureDirectoryExists(finalOutputPath);
         }
 
         let pages = await this.fetchPages(site, accessToken);
@@ -42,39 +43,23 @@ export class ShopifyPages {
             pages = pages.slice(0, maxPages);
             console.log(`Limited to first ${pages.length} pages for testing`);
         } else {
-            console.log(`Found ${pages.length} remote pages`);
+            console.log(`Found ${pages.length} remote pages to sync`);
         }
 
-        // Simple approach: always sync all files for reliability
-        const toDownload: Page[] = [];
-        const toUpdate: Page[] = [];
         const toDelete: string[] = [];
 
-        // Check each page
-        pages.forEach(page => {
-            const localFilePath = this.getPageFilePath(finalOutputPath, page);
-            if (!fs.existsSync(localFilePath)) {
-                toDownload.push(page);
-            } else {
-                toUpdate.push(page);
-            }
-        });
-
-        // Find local files to delete (only in mirror mode)
         if (mirror) {
             const remotePageHandles = new Set(pages.map(page => `${page.handle}.html`));
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remotePageHandles));
-        }
-
-        console.log(`Pages to download: ${toDownload.length} new, ${toUpdate.length} updated, ${pages.length - toDownload.length - toUpdate.length} unchanged`);
-        if (mirror && toDelete.length > 0) {
-            console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+            
+            if (toDelete.length > 0) {
+                console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+            }
         }
 
         if (dryRun) {
             console.log('\nDRY RUN SUMMARY:');
-            console.log(`Pages to download (new): ${toDownload.length}`);
-            console.log(`Pages to update (modified): ${toUpdate.length}`);
+            console.log(`Pages to sync: ${pages.length}`);
             if (mirror && toDelete.length > 0) {
                 console.log(`Local files to delete: ${toDelete.length}`);
                 toDelete.slice(0, 10).forEach((file: string) => console.log(`  - ${file}`));
@@ -85,17 +70,14 @@ export class ShopifyPages {
             return;
         }
 
-        // Delete local files not present remotely (only in mirror mode)
         if (mirror && toDelete.length > 0) {
             this.deleteLocalFiles(finalOutputPath, toDelete);
         }
 
-        // Download files that need it (new pages + updated pages)
-        const pagesToDownload = [...toDownload, ...toUpdate];
-        if (pagesToDownload.length > 0) {
-            await this.downloadPages(pagesToDownload, finalOutputPath);
+        if (pages.length > 0) {
+            await this.downloadPages(pages, finalOutputPath);
         } else {
-            console.log('No pages need to be downloaded - all files are already up to date');
+            console.log('No pages to sync');
         }
 
         console.log(`Successfully pulled pages to ${finalOutputPath}`);
@@ -105,35 +87,15 @@ export class ShopifyPages {
         const dryRunManager = new DryRunManager(dryRun);
         dryRunManager.logDryRunHeader(`Push pages${mirror ? ' (Mirror Mode)' : ''}`);
 
-        // Resolve the pages folder path (similar to themes)
         const pagesPath = this.resolvePagesPath(inputPath);
         console.log(`${dryRun ? 'Would push' : 'Pushing'} local pages from "${pagesPath}"`);
 
-        // Collect all local files to upload
         const localFiles = this.collectLocalPageFiles(pagesPath);
 
-        // Get current remote pages for comparison
         const remotePages = await this.fetchPages(site, accessToken);
 
-        // Simple approach: always sync all files for reliability
-        const remotePageMap = new Map<string, Page>();
-        remotePages.forEach(page => remotePageMap.set(page.handle, page));
-
-        const toUpload: Array<{ key: string, handle: string, filePath: string }> = [];
-        const toUpdate: Array<{ key: string, handle: string, filePath: string, pageId: number }> = [];
         const toDelete: Array<{ key: string, page: Page }> = [];
 
-        // Check local files against remote
-        localFiles.forEach(localFile => {
-            const remotePage = remotePageMap.get(localFile.handle);
-            if (!remotePage) {
-                toUpload.push({ key: `${localFile.handle}.html`, ...localFile });
-            } else {
-                toUpdate.push({ key: `${localFile.handle}.html`, ...localFile, pageId: remotePage.id });
-            }
-        });
-
-        // Check for remote pages that don't exist locally (only in mirror mode)
         if (mirror) {
             const localFileMap = new Map<string, { handle: string, filePath: string }>();
             localFiles.forEach(file => localFileMap.set(file.handle, file));
@@ -143,28 +105,33 @@ export class ShopifyPages {
                     toDelete.push({ key: `${remotePage.handle}.html`, page: remotePage });
                 }
             });
+
+            if (toDelete.length > 0) {
+                console.log(`Mirror mode: ${toDelete.length} remote pages will be deleted`);
+            }
         }
 
-        console.log(`Found ${localFiles.length} local files`);
-        console.log(`Pages to upload: ${toUpload.length} new, ${toUpdate.length} updated, ${localFiles.length - toUpload.length - toUpdate.length} unchanged`);
-        if (mirror && toDelete.length > 0) {
-            console.log(`Mirror mode: ${toDelete.length} remote pages will be deleted`);
-        }
+        console.log(`Found ${localFiles.length} local pages to upload`);
 
         if (dryRun) {
-            dryRunManager.logDryRunSummary({ toUpload, toUpdate, toDelete });
+            console.log('\nDRY RUN SUMMARY:');
+            console.log(`Pages to upload: ${localFiles.length}`);
+            if (mirror && toDelete.length > 0) {
+                console.log(`Remote pages to delete: ${toDelete.length}`);
+                toDelete.slice(0, 10).forEach(item => console.log(`  - ${item.key}`));
+                if (toDelete.length > 10) {
+                    console.log(`  ... and ${toDelete.length - 10} more pages`);
+                }
+            }
             return;
         }
 
-        // Upload files that need it (new files + updated files)
-        const filesToUpload = [...toUpload.map(f => ({ ...f, pageId: undefined })), ...toUpdate];
-        if (filesToUpload.length > 0) {
-            await this.uploadPages(site, accessToken, filesToUpload);
+        if (localFiles.length > 0) {
+            await this.uploadPages(site, accessToken, localFiles);
         } else {
-            console.log('No files need to be uploaded - all files are already up to date');
+            console.log('No pages to upload');
         }
 
-        // Delete remote pages not present locally (only in mirror mode)
         if (mirror && toDelete.length > 0) {
             await this.deletePages(site, accessToken, toDelete.map(item => item.page));
         }
@@ -201,18 +168,6 @@ export class ShopifyPages {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private getOutputPath(outputPath: string): string {
-        // Ensure pages are stored in a 'pages' subfolder for consistency with themes structure
-        return path.basename(outputPath).toLowerCase() === 'pages' 
-            ? outputPath 
-            : path.join(outputPath, 'pages');
-    }
-
-    private ensureDirectoryExists(dirPath: string): void {
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
-    }
 
     private getPageFilePath(outputPath: string, page: Page): string {
         return path.join(outputPath, `${page.handle}.html`);
@@ -271,56 +226,34 @@ export class ShopifyPages {
     private async downloadSinglePage(page: Page, outputPath: string): Promise<void> {
         const filePath = this.getPageFilePath(outputPath, page);
 
-        // Create page content with metadata
-        const pageContent = this.createPageContent(page);
-
         // Ensure the directory for this file exists
         const dirPath = path.dirname(filePath);
         if (!fs.existsSync(dirPath)) {
             fs.mkdirSync(dirPath, { recursive: true });
         }
 
-        fs.writeFileSync(filePath, pageContent, 'utf8');
-    }
-
-    private createPageContent(page: Page): string {
-        let content = `<!-- Page: ${page.title}`;
-        if (page.template_suffix) {
-            content += ` | Template: ${page.template_suffix}`;
-        }
-        content += ` -->\n\n`;
-
-        content += page.body_html || '';
-
-        return content;
+        // Save page HTML as-is from Shopify
+        fs.writeFileSync(filePath, page.body_html || '', 'utf8');
     }
 
     private resolvePagesPath(basePath: string): string {
-        // Try multiple possible locations for the pages folder
-        const possiblePaths = [
-            basePath, // Direct path to pages folder
-            path.join(basePath, 'pages') // parent/pages
-        ];
-
-        for (const possiblePath of possiblePaths) {
-            if (fs.existsSync(possiblePath)) {
-                const stat = fs.statSync(possiblePath);
-                if (stat.isDirectory()) {
-                    // Check if it contains .html files (pages)
-                    const entries = fs.readdirSync(possiblePath);
-                    const hasHtmlFiles = entries.some(entry => entry.endsWith('.html'));
-                    if (hasHtmlFiles) {
-                        return possiblePath;
-                    }
-                }
-            }
+        const pagesPath = IOUtility.buildResourcePath(basePath, 'pages');
+        
+        if (!fs.existsSync(pagesPath)) {
+            throw new Error(
+                `Pages directory not found: ${pagesPath}\n` +
+                `Expected structure: ${basePath}/pages/`
+            );
         }
 
-        throw new Error(
-            `Could not find pages folder with HTML files. ` +
-            `Tried:\n  - ${possiblePaths.join('\n  - ')}\n` +
-            `Expected directory containing .html page files`
-        );
+        const entries = fs.readdirSync(pagesPath);
+        const hasHtmlFiles = entries.some(entry => entry.endsWith('.html'));
+
+        if (!hasHtmlFiles) {
+            throw new Error(`No HTML files found in directory: ${pagesPath}`);
+        }
+
+        return pagesPath;
     }
 
     private collectLocalPageFiles(inputPath: string): Array<{ handle: string, filePath: string }> {
@@ -362,8 +295,13 @@ export class ShopifyPages {
     }
 
     private async uploadSinglePage(site: string, accessToken: string, file: { handle: string, filePath: string, pageId?: number }): Promise<void> {
-        const content = fs.readFileSync(file.filePath, 'utf8');
-        const pageData = this.parsePageContent(content, file.handle);
+        const bodyHtml = fs.readFileSync(file.filePath, 'utf8');
+
+        const pageData: Partial<Page> = {
+            title: file.handle,
+            handle: file.handle,
+            body_html: bodyHtml
+        };
 
         const url = file.pageId
             ? `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.PAGE_BY_ID(file.pageId)}`
@@ -374,31 +312,6 @@ export class ShopifyPages {
         await this.makeRequest(url, method, { page: pageData }, {
             'X-Shopify-Access-Token': accessToken
         });
-    }
-
-    private parsePageContent(content: string, handle: string): Partial<Page> {
-        const headerMatch = content.match(/<!-- Page: (.+?)(?: \| Template: (.+?))? -->\n\n/);
-        let title = handle;
-        let templateSuffix: string | undefined;
-
-        if (headerMatch) {
-            title = headerMatch[1];
-            templateSuffix = headerMatch[2];
-        }
-
-        let bodyHtml = content.replace(/<!-- Page: .+? -->\n\n/, '');
-
-        const pageData: Partial<Page> = {
-            title,
-            handle,
-            body_html: bodyHtml
-        };
-
-        if (templateSuffix) {
-            pageData.template_suffix = templateSuffix;
-        }
-
-        return pageData;
     }
 
     private async deletePages(site: string, accessToken: string, pages: Page[]): Promise<void> {
