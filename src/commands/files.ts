@@ -4,7 +4,7 @@ import * as yaml from 'js-yaml';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
-import { getCredentialsFromEnv } from '../utils/auth';
+import { CredentialResolver } from '../utils/auth';
 import { IOUtility } from '../utils/io';
 
 interface FileNode {
@@ -144,7 +144,7 @@ export class ShopifyFiles {
         if (mirror) {
             const remoteFileNames = new Set(files.map(file => this.getFileName(file)));
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteFileNames));
-            
+
             if (toDelete.length > 0) {
                 console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
             }
@@ -344,7 +344,7 @@ export class ShopifyFiles {
 
     private getFileName(file: FileNode): string {
         let url = '';
-        
+
         if ('image' in file && file.image?.url) {
             url = file.image.url;
         } else if ('sources' in file && Array.isArray(file.sources) && file.sources[0]?.url) {
@@ -394,7 +394,7 @@ export class ShopifyFiles {
             try {
                 fs.unlinkSync(filePath);
                 console.log(`Deleted local file: ${file}`);
-                
+
                 const metaPath = `${filePath}.meta`;
                 if (fs.existsSync(metaPath)) {
                     fs.unlinkSync(metaPath);
@@ -429,7 +429,7 @@ export class ShopifyFiles {
 
     private async downloadSingleFile(file: FileNode, outputPath: string): Promise<void> {
         let fileUrl = '';
-        
+
         if ('image' in file && file.image?.url) {
             fileUrl = file.image.url;
         } else if ('sources' in file && Array.isArray(file.sources) && file.sources[0]?.url) {
@@ -437,7 +437,7 @@ export class ShopifyFiles {
         } else if ('url' in file && file.url) {
             fileUrl = file.url;
         }
-        
+
         if (!fileUrl) {
             throw new Error(`No URL available for file ID ${file.id}`);
         }
@@ -481,7 +481,7 @@ export class ShopifyFiles {
 
     private resolveFilesPath(basePath: string): string {
         const filesPath = IOUtility.buildResourcePath(basePath, 'files');
-        
+
         if (!fs.existsSync(filesPath)) {
             throw new Error(
                 `Files directory not found: ${filesPath}\n` +
@@ -515,7 +515,7 @@ export class ShopifyFiles {
             if (entry.isFile() && !entry.name.endsWith('.meta')) {
                 const filePath = path.join(inputPath, entry.name);
                 const metaPath = `${filePath}.meta`;
-                
+
                 let metadata: FileMetadata | undefined;
                 if (fs.existsSync(metaPath)) {
                     try {
@@ -526,7 +526,7 @@ export class ShopifyFiles {
                         console.warn(`Failed to read metadata for ${entry.name}: ${message}`);
                     }
                 }
-                
+
                 files.push({ fileName: entry.name, filePath, metadata });
             }
         });
@@ -599,7 +599,7 @@ export class ShopifyFiles {
         const response = await this.graphqlRequest<FileCreateUpdateResponse>(site, accessToken, mutation, variables);
 
         const result = file.fileId ? response.data.fileUpdate : response.data.fileCreate;
-        
+
         if (result && result.userErrors && result.userErrors.length > 0) {
             throw new Error(`Upload failed: ${result.userErrors.map(e => e.message).join(', ')}`);
         }
@@ -648,11 +648,11 @@ export class ShopifyFiles {
 
         const fileBuffer = fs.readFileSync(filePath);
         const formData = new FormData();
-        
+
         stagedTarget.parameters.forEach(param => {
             formData.append(param.name, param.value);
         });
-        
+
         formData.append('file', new Blob([fileBuffer]), fileName);
 
         const uploadResponse = await fetch(stagedTarget.url, {
@@ -691,7 +691,7 @@ export class ShopifyFiles {
         const ext = path.extname(fileName).toLowerCase();
         const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp'];
         const videoExtensions = ['.mp4', '.mov', '.avi'];
-        
+
         if (imageExtensions.includes(ext)) return 'IMAGE';
         if (videoExtensions.includes(ext)) return 'VIDEO';
         return 'FILE';
@@ -744,32 +744,13 @@ export class ShopifyFiles {
 
 export async function filesPullCommand(options: FilesPullOptions): Promise<void> {
     const files = new ShopifyFiles();
-    const credentials = getCredentialsFromEnv();
-
-    let finalSite = options.site;
-    let finalAccessToken = options.accessToken;
-
-    if (!finalSite || !finalAccessToken) {
-        if (credentials) {
-            finalSite = finalSite || credentials.site;
-            finalAccessToken = finalAccessToken || credentials.accessToken;
-        }
-    }
-
-    if (!finalSite || !finalAccessToken) {
-        throw new Error('Missing credentials. Provide either:\n' +
-            '1. CLI arguments: --site <domain> --access-token <token>\n' +
-            '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-    }
-
-    if (!options.output) {
-        throw new Error('Output path is required. Use --output <path>');
-    }
+    const credentials = CredentialResolver.resolve(options);
+    CredentialResolver.validateRequiredOptions(options, ['output']);
 
     await files.pull(
         options.output,
-        finalSite,
-        finalAccessToken,
+        credentials.site,
+        credentials.accessToken,
         options.maxFiles,
         options.dryRun,
         options.mirror
@@ -778,32 +759,13 @@ export async function filesPullCommand(options: FilesPullOptions): Promise<void>
 
 export async function filesPushCommand(options: FilesPushOptions): Promise<void> {
     const files = new ShopifyFiles();
-    const credentials = getCredentialsFromEnv();
-
-    let finalSite = options.site;
-    let finalAccessToken = options.accessToken;
-
-    if (!finalSite || !finalAccessToken) {
-        if (credentials) {
-            finalSite = finalSite || credentials.site;
-            finalAccessToken = finalAccessToken || credentials.accessToken;
-        }
-    }
-
-    if (!finalSite || !finalAccessToken) {
-        throw new Error('Missing credentials. Provide either:\n' +
-            '1. CLI arguments: --site <domain> --access-token <token>\n' +
-            '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-    }
-
-    if (!options.input) {
-        throw new Error('Input path is required. Use --input <path>');
-    }
+    const credentials = CredentialResolver.resolve(options);
+    CredentialResolver.validateRequiredOptions(options, ['input']);
 
     await files.push(
         options.input,
-        finalSite,
-        finalAccessToken,
+        credentials.site,
+        credentials.accessToken,
         options.dryRun,
         options.mirror
     );

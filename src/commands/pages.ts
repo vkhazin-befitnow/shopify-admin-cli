@@ -2,8 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
+import { HttpClient } from '../utils/http-client';
 import { SHOPIFY_API } from '../settings';
-import { getCredentialsFromEnv } from '../utils/auth';
+import { CredentialResolver } from '../utils/auth';
 import { IOUtility } from '../utils/io';
 
 interface Page {
@@ -24,6 +25,8 @@ interface PageListResult {
 }
 
 export class ShopifyPages {
+    private httpClient = new HttpClient();
+
     constructor() { }
 
     async pull(outputPath: string, site: string, accessToken: string, maxPages?: number, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
@@ -32,7 +35,7 @@ export class ShopifyPages {
 
         const finalOutputPath = IOUtility.buildResourcePath(outputPath, 'pages');
         console.log(`${dryRun ? 'Would pull' : 'Pulling'} pages to: ${finalOutputPath}`);
-        
+
         if (!dryRun) {
             IOUtility.ensureDirectoryExists(finalOutputPath);
         }
@@ -51,7 +54,7 @@ export class ShopifyPages {
         if (mirror) {
             const remotePageHandles = new Set(pages.map(page => `${page.handle}.html`));
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remotePageHandles));
-            
+
             if (toDelete.length > 0) {
                 console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
             }
@@ -240,7 +243,7 @@ export class ShopifyPages {
 
     private resolvePagesPath(basePath: string): string {
         const pagesPath = IOUtility.buildResourcePath(basePath, 'pages');
-        
+
         if (!fs.existsSync(pagesPath)) {
             throw new Error(
                 `Pages directory not found: ${pagesPath}\n` +
@@ -312,8 +315,10 @@ export class ShopifyPages {
 
         const method = file.pageId ? 'PUT' : 'POST';
 
-        await this.makeRequest(url, method, { page: pageData }, {
-            'X-Shopify-Access-Token': accessToken
+        await this.httpClient.request(url, method, {
+            body: { page: pageData },
+            headers: { 'X-Shopify-Access-Token': accessToken },
+            resourceType: 'pages'
         });
     }
 
@@ -339,69 +344,25 @@ export class ShopifyPages {
     private async deleteSinglePage(site: string, accessToken: string, page: Page): Promise<void> {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.PAGE_BY_ID(page.id)}`;
 
-        await this.makeRequest(url, 'DELETE', {}, {
-            'X-Shopify-Access-Token': accessToken
+        await this.httpClient.request(url, 'DELETE', {
+            headers: { 'X-Shopify-Access-Token': accessToken },
+            resourceType: 'pages'
         });
     }
 
-    private async makeRequest(url: string, method: string, body: any, headers: Record<string, string>): Promise<Response> {
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...headers
-                },
-                body: method !== 'DELETE' ? JSON.stringify(body) : undefined
-            });
 
-            if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
-            }
-
-            if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has write_online_store_pages scope');
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
-            }
-
-            return response;
-        }, SHOPIFY_API.RETRY_CONFIG);
-    }
 }
 
 // Export command functions to match the theme pattern
 export async function pagesPullCommand(options: any): Promise<void> {
     const pages = new ShopifyPages();
-    const credentials = getCredentialsFromEnv();
-
-    let finalSite = options.site;
-    let finalAccessToken = options.accessToken;
-
-    if (!finalSite || !finalAccessToken) {
-        if (credentials) {
-            finalSite = finalSite || credentials.site;
-            finalAccessToken = finalAccessToken || credentials.accessToken;
-        }
-    }
-
-    if (!finalSite || !finalAccessToken) {
-        throw new Error('Missing credentials. Provide either:\n' +
-            '1. CLI arguments: --site <domain> --access-token <token>\n' +
-            '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-    }
-
-    if (!options.output) {
-        throw new Error('Output path is required. Use --output <path>');
-    }
+    const credentials = CredentialResolver.resolve(options);
+    CredentialResolver.validateRequiredOptions(options, ['output']);
 
     await pages.pull(
         options.output,
-        finalSite,
-        finalAccessToken,
+        credentials.site,
+        credentials.accessToken,
         options.maxPages,
         options.dryRun,
         options.mirror
@@ -410,32 +371,13 @@ export async function pagesPullCommand(options: any): Promise<void> {
 
 export async function pagesPushCommand(options: any): Promise<void> {
     const pages = new ShopifyPages();
-    const credentials = getCredentialsFromEnv();
-
-    let finalSite = options.site;
-    let finalAccessToken = options.accessToken;
-
-    if (!finalSite || !finalAccessToken) {
-        if (credentials) {
-            finalSite = finalSite || credentials.site;
-            finalAccessToken = finalAccessToken || credentials.accessToken;
-        }
-    }
-
-    if (!finalSite || !finalAccessToken) {
-        throw new Error('Missing credentials. Provide either:\n' +
-            '1. CLI arguments: --site <domain> --access-token <token>\n' +
-            '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-    }
-
-    if (!options.input) {
-        throw new Error('Input path is required. Use --input <path>');
-    }
+    const credentials = CredentialResolver.resolve(options);
+    CredentialResolver.validateRequiredOptions(options, ['input']);
 
     await pages.push(
         options.input,
-        finalSite,
-        finalAccessToken,
+        credentials.site,
+        credentials.accessToken,
         options.dryRun,
         options.mirror
     );

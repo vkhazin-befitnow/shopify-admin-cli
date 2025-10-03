@@ -2,8 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
+import { HttpClient } from '../utils/http-client';
 import { SHOPIFY_API } from '../settings';
-import { getCredentialsFromEnv } from '../utils/auth';
+import { CredentialResolver } from '../utils/auth';
 import { IOUtility } from '../utils/io';
 
 interface Theme {
@@ -46,6 +47,8 @@ interface AssetUpload {
 }
 
 export class ShopifyThemes {
+    private httpClient = new HttpClient();
+
     constructor() { }
 
     async pull(themeName: string | null, outputPath: string, site: string, accessToken: string, maxAssets?: number, dryRun: boolean = false, mirror: boolean = false, published: boolean = false): Promise<void> {
@@ -54,7 +57,7 @@ export class ShopifyThemes {
 
         // First, get all themes to find the one with matching name or published theme
         const themesList = await this.fetchThemes(site, accessToken);
-        
+
         let theme: Theme | undefined;
         if (published) {
             theme = themesList.themes.find(t => t.role === 'main' || t.role === 'published');
@@ -89,7 +92,7 @@ export class ShopifyThemes {
         if (mirror) {
             const remoteAssetKeys = new Set(assets.map(asset => asset.key));
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteAssetKeys));
-            
+
             if (toDelete.length > 0) {
                 console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
             }
@@ -130,7 +133,7 @@ export class ShopifyThemes {
 
         // First, get all themes to find the one with matching name or published theme
         const themesList = await this.fetchThemes(site, accessToken);
-        
+
         let theme: Theme | undefined;
         if (published) {
             theme = themesList.themes.find(t => t.role === 'main' || t.role === 'published');
@@ -230,7 +233,7 @@ export class ShopifyThemes {
 
     private resolveThemePath(basePath: string, themeName: string): string {
         const themePath = IOUtility.buildResourcePath(basePath, 'themes', themeName);
-        
+
         if (!fs.existsSync(themePath)) {
             throw new Error(
                 `Theme directory not found: ${themePath}\n` +
@@ -407,44 +410,14 @@ export class ShopifyThemes {
             asset.value = fileContent.toString();
         }
 
-        const response = await this.makeRequest(url, 'PUT', {
-            asset
-        }, {
-            'X-Shopify-Access-Token': accessToken
+        await this.httpClient.request(url, 'PUT', {
+            body: { asset },
+            headers: { 'X-Shopify-Access-Token': accessToken },
+            resourceType: 'themes'
         });
-
-        if (response.status !== 200 && response.status !== 201) {
-            throw new Error(`Failed to upload ${file.key}: ${response.status} ${response.statusText}`);
-        }
     }
 
-    private async makeRequest(url: string, method: string, body: any, headers: Record<string, string>): Promise<Response> {
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method,
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...headers
-                },
-                body: JSON.stringify(body)
-            });
 
-            if (response.status === 401) {
-                throw new Error('Unauthorized: invalid token or store domain');
-            }
-
-            if (response.status === 403) {
-                throw new Error('Forbidden: missing required permissions. Ensure your app has write_themes scope');
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`API request failed: ${response.status} ${errorText}`);
-            }
-
-            return response;
-        }, SHOPIFY_API.RETRY_CONFIG);
-    }
 
     private async deleteAssets(site: string, accessToken: string, themeId: number, assets: Asset[]): Promise<void> {
         const rateLimitedDelete = RetryUtility.rateLimited(
@@ -538,24 +511,10 @@ export async function themesPullCommand(options: {
     const themes = new ShopifyThemes();
 
     try {
-        let site = options.site;
-        let accessToken = options.accessToken;
+        const credentials = CredentialResolver.resolve(options);
+        CredentialResolver.validateRequiredOptions(options, ['output']);
 
-        if (!site || !accessToken) {
-            const envCredentials = getCredentialsFromEnv();
-            if (envCredentials) {
-                site = site || envCredentials.site;
-                accessToken = accessToken || envCredentials.accessToken;
-            }
-        }
-
-        if (!site || !accessToken) {
-            throw new Error('Missing credentials. Provide either:\n' +
-                '1. CLI arguments: --site <domain> --access-token <token>\n' +
-                '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-        }
-
-        await themes.pull(options.themeName || null, options.output, site, accessToken, undefined, options.dryRun || false, options.mirror || false, options.published || false);
+        await themes.pull(options.themeName || null, options.output, credentials.site, credentials.accessToken, undefined, options.dryRun || false, options.mirror || false, options.published || false);
 
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -576,24 +535,10 @@ export async function themesPushCommand(options: {
     const themes = new ShopifyThemes();
 
     try {
-        let site = options.site;
-        let accessToken = options.accessToken;
+        const credentials = CredentialResolver.resolve(options);
+        CredentialResolver.validateRequiredOptions(options, ['input']);
 
-        if (!site || !accessToken) {
-            const envCredentials = getCredentialsFromEnv();
-            if (envCredentials) {
-                site = site || envCredentials.site;
-                accessToken = accessToken || envCredentials.accessToken;
-            }
-        }
-
-        if (!site || !accessToken) {
-            throw new Error('Missing credentials. Provide either:\n' +
-                '1. CLI arguments: --site <domain> --access-token <token>\n' +
-                '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-        }
-
-        await themes.push(options.themeName || null, options.input, site, accessToken, options.dryRun || false, options.mirror || false, options.published || false);
+        await themes.push(options.themeName || null, options.input, credentials.site, credentials.accessToken, options.dryRun || false, options.mirror || false, options.published || false);
 
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

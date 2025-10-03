@@ -2,18 +2,6 @@
 
 ## High Priority - Code Duplication & Architecture
 
-### 1. **Massive Code Duplication in Command Functions**
-- **Location**: `src/commands/pages.ts`, `src/commands/themes.ts`, `src/commands/files.ts`
-- **Issue**: Each command has nearly identical credential handling logic (30+ lines duplicated)
-- **Impact**: Maintenance nightmare, bug multiplication
-- **Solution**: Extract to shared `CredentialResolver` utility class
-
-### 2. **Duplicated makeRequest Method**
-- **Location**: `src/commands/pages.ts:347`, `src/commands/themes.ts:421`
-- **Issue**: Identical HTTP request wrapper method in multiple files
-- **Impact**: Code duplication, inconsistent error handling
-- **Solution**: Move to shared HTTP utility class
-
 ### 3. **Weak Type Safety**
 - **Location**: `src/commands/pages.ts:377`, `src/commands/pages.ts:411`
 - **Issue**: Using `options: any` instead of proper interfaces

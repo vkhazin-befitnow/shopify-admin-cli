@@ -1,4 +1,4 @@
-import { getCredentialsFromEnv } from '../utils/auth';
+import { CredentialResolver } from '../utils/auth';
 
 interface ValidationResult {
   shop: {
@@ -17,26 +17,8 @@ export class ShopifyAuth {
    */
   async validate(site?: string, accessToken?: string): Promise<ValidationResult> {
     // Get credentials using priority: 1. CLI args, 2. env vars, 3. error
-    let finalSite = site;
-    let finalAccessToken = accessToken;
-
-    // If no explicit parameters provided, try environment variables
-    if (!finalSite || !finalAccessToken) {
-      const envCredentials = getCredentialsFromEnv();
-      if (envCredentials) {
-        finalSite = finalSite || envCredentials.site;
-        finalAccessToken = finalAccessToken || envCredentials.accessToken;
-      }
-    }
-
-    // Error if credentials are still missing
-    if (!finalSite || !finalAccessToken) {
-      throw new Error('Missing credentials. Provide either:\n' +
-        '1. CLI arguments: --site <domain> --access-token <token>\n' +
-        '2. Environment variables: SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN');
-    }
-
-    return await this.validateWithGraphQL(finalSite, finalAccessToken);
+    const credentials = CredentialResolver.resolve({ site, accessToken });
+    return await this.validateWithGraphQL(credentials.site, credentials.accessToken);
   }
 
   /**
