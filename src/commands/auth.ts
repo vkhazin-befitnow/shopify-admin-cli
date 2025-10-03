@@ -1,4 +1,5 @@
 import { CredentialResolver } from '../utils/auth';
+import { Logger } from '../utils/logger';
 
 interface ValidationResult {
   shop: {
@@ -99,19 +100,19 @@ export async function authValidateCommand(site?: string, accessToken?: string): 
   try {
     const result = await auth.validate(site, accessToken);
 
-    console.log(`Valid credentials for: ${result.shop.name}`);
-    console.log(`Store domain: ${result.shop.domain}`);
+    Logger.success(`Valid credentials for: ${result.shop.name}`);
+    Logger.info(`Store domain: ${result.shop.domain}`);
 
     if (result.scopes && result.scopes.length > 0) {
-      console.log(`Granted scopes (${result.scopes.length}):`);
-      result.scopes.forEach(scope => console.log(`  ${scope}`));
+      Logger.info(`Granted scopes (${result.scopes.length}):`);
+      result.scopes.forEach(scope => Logger.info(`  ${scope}`));
     } else {
-      console.log('No scopes granted');
+      Logger.info('No scopes granted');
     }
 
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`Validation failed: ${message}`);
+    Logger.error(`Validation failed: ${message}`);
     process.exit(1);
   }
 }

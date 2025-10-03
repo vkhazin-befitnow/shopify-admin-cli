@@ -6,6 +6,7 @@ import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
 import { CredentialResolver } from '../utils/auth';
 import { IOUtility } from '../utils/io';
+import { Logger } from '../utils/logger';
 
 interface FileNode {
     id: string;
@@ -133,11 +134,11 @@ export class ShopifyFiles {
         dryRunManager.logDryRunHeader(`Pull files${mirror ? ' (Mirror Mode)' : ''}`);
 
         const finalOutputPath = this.prepareOutputDirectory(outputPath);
-        console.log(`${dryRun ? 'Would pull' : 'Pulling'} files to: ${finalOutputPath}`);
+        dryRunManager.logAction('pull', `files to: ${finalOutputPath}`);
 
         let files = await this.fetchFiles(site, accessToken, maxFiles);
 
-        console.log(`Found ${files.length} remote files to sync`);
+        Logger.info(`Found ${files.length} remote files to sync`);
 
         const toDelete: string[] = [];
 
@@ -146,20 +147,18 @@ export class ShopifyFiles {
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteFileNames));
 
             if (toDelete.length > 0) {
-                console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+                Logger.info(`Mirror mode: ${toDelete.length} local files will be deleted`);
             }
         }
 
-        if (dryRun) {
-            console.log('\nDRY RUN SUMMARY:');
-            console.log(`Files to sync: ${files.length}`);
-            if (mirror && toDelete.length > 0) {
-                console.log(`Local files to delete: ${toDelete.length}`);
-                toDelete.slice(0, 10).forEach((file: string) => console.log(`  - ${file}`));
-                if (toDelete.length > 10) {
-                    console.log(`  ... and ${toDelete.length - 10} more files`);
-                }
-            }
+        dryRunManager.logSummary({
+            itemsToSync: files.length,
+            itemsToDelete: mirror ? toDelete.length : undefined,
+            deleteList: toDelete,
+            itemType: 'Files'
+        });
+
+        if (!dryRunManager.shouldExecute()) {
             return;
         }
 
@@ -170,10 +169,10 @@ export class ShopifyFiles {
         if (files.length > 0) {
             await this.downloadFiles(files, finalOutputPath);
         } else {
-            console.log('No files to sync');
+            Logger.info('No files to sync');
         }
 
-        console.log(`Successfully pulled files to ${finalOutputPath}`);
+        Logger.success(`Successfully pulled files to ${finalOutputPath}`);
     }
 
     async push(inputPath: string, site: string, accessToken: string, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
@@ -181,7 +180,7 @@ export class ShopifyFiles {
         dryRunManager.logDryRunHeader(`Push files${mirror ? ' (Mirror Mode)' : ''}`);
 
         const filesPath = this.resolveFilesPath(inputPath);
-        console.log(`${dryRun ? 'Would push' : 'Pushing'} local files from "${filesPath}"`);
+        dryRunManager.logAction('push', `local files from "${filesPath}"`);
 
         const localFiles = this.collectLocalFiles(filesPath);
 
@@ -204,36 +203,34 @@ export class ShopifyFiles {
             });
 
             if (toDelete.length > 0) {
-                console.log(`Mirror mode: ${toDelete.length} remote files will be deleted`);
+                Logger.info(`Mirror mode: ${toDelete.length} remote files will be deleted`);
             }
         }
 
-        console.log(`Found ${localFiles.length} local files to upload`);
+        Logger.info(`Found ${localFiles.length} local files to upload`);
 
-        if (dryRun) {
-            console.log('\nDRY RUN SUMMARY:');
-            console.log(`Files to upload: ${localFiles.length}`);
-            if (mirror && toDelete.length > 0) {
-                console.log(`Remote files to delete: ${toDelete.length}`);
-                toDelete.slice(0, 10).forEach(item => console.log(`  - ${item.fileName}`));
-                if (toDelete.length > 10) {
-                    console.log(`  ... and ${toDelete.length - 10} more files`);
-                }
-            }
+        dryRunManager.logSummary({
+            itemsToUpload: localFiles.length,
+            itemsToDelete: mirror ? toDelete.length : undefined,
+            deleteList: toDelete.map(item => item.fileName),
+            itemType: 'Files'
+        });
+
+        if (!dryRunManager.shouldExecute()) {
             return;
         }
 
         if (localFiles.length > 0) {
             await this.uploadFiles(site, accessToken, localFiles);
         } else {
-            console.log('No files to upload');
+            Logger.info('No files to upload');
         }
 
         if (mirror && toDelete.length > 0) {
             await this.deleteFiles(site, accessToken, toDelete.map(item => item.file));
         }
 
-        console.log('Successfully pushed files');
+        Logger.success('Successfully pushed files');
     }
 
     private async fetchFiles(site: string, accessToken: string, maxFiles?: number): Promise<FileNode[]> {
@@ -393,16 +390,16 @@ export class ShopifyFiles {
             const filePath = path.join(outputPath, file);
             try {
                 fs.unlinkSync(filePath);
-                console.log(`Deleted local file: ${file}`);
+                Logger.info(`Deleted local file: ${file}`);
 
                 const metaPath = `${filePath}.meta`;
                 if (fs.existsSync(metaPath)) {
                     fs.unlinkSync(metaPath);
-                    console.log(`Deleted metadata: ${file}.meta`);
+                    Logger.info(`Deleted metadata: ${file}.meta`);
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to delete ${file}: ${message}`);
+                Logger.warn(`Failed to delete ${file}: ${message}`);
             }
         });
     }
@@ -416,13 +413,13 @@ export class ShopifyFiles {
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const fileName = this.getFileName(file);
-            console.log(`Downloading (${i + 1}/${files.length}): ${fileName}`);
+            Logger.progress(i + 1, files.length, `Downloading ${fileName}`);
 
             try {
                 await rateLimitedDownload(file);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to download ${fileName}: ${message}`);
+                Logger.warn(`Failed to download ${fileName}: ${message}`);
             }
         }
     }
@@ -523,7 +520,7 @@ export class ShopifyFiles {
                         metadata = yaml.load(metaContent) as FileMetadata;
                     } catch (error) {
                         const message = error instanceof Error ? error.message : String(error);
-                        console.warn(`Failed to read metadata for ${entry.name}: ${message}`);
+                        Logger.warn(`Failed to read metadata for ${entry.name}: ${message}`);
                     }
                 }
 
@@ -542,13 +539,13 @@ export class ShopifyFiles {
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            console.log(`Uploading (${i + 1}/${files.length}): ${file.fileName}`);
+            Logger.progress(i + 1, files.length, `Uploading ${file.fileName}`);
 
             try {
                 await rateLimitedUpload(file);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to upload ${file.fileName}: ${message}`);
+                Logger.warn(`Failed to upload ${file.fileName}: ${message}`);
             }
         }
     }
@@ -706,13 +703,13 @@ export class ShopifyFiles {
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const fileName = this.getFileName(file);
-            console.log(`Deleting (${i + 1}/${files.length}): ${fileName}`);
+            Logger.progress(i + 1, files.length, `Deleting ${fileName}`);
 
             try {
                 await rateLimitedDelete(file);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to delete ${fileName}: ${message}`);
+                Logger.warn(`Failed to delete ${fileName}: ${message}`);
             }
         }
     }

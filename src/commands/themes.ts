@@ -6,6 +6,7 @@ import { HttpClient } from '../utils/http-client';
 import { SHOPIFY_API } from '../settings';
 import { CredentialResolver } from '../utils/auth';
 import { IOUtility } from '../utils/io';
+import { Logger } from '../utils/logger';
 
 interface Theme {
     id: number;
@@ -46,6 +47,26 @@ interface AssetUpload {
     value?: string;
 }
 
+export interface ThemesPullOptions {
+    themeName?: string;
+    output: string;
+    dryRun?: boolean;
+    mirror?: boolean;
+    published?: boolean;
+    site?: string;
+    accessToken?: string;
+}
+
+export interface ThemesPushOptions {
+    themeName?: string;
+    input: string;
+    dryRun?: boolean;
+    mirror?: boolean;
+    published?: boolean;
+    site?: string;
+    accessToken?: string;
+}
+
 export class ShopifyThemes {
     private httpClient = new HttpClient();
 
@@ -76,15 +97,15 @@ export class ShopifyThemes {
         }
 
         const finalOutputPath = IOUtility.buildResourcePath(outputPath, 'themes', theme.name);
-        console.log(`${dryRun ? 'Would pull' : 'Pulling'} theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
+        dryRunManager.logAction('pull', `theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
 
         let assets = await this.fetchThemeAssets(site, accessToken, theme.id);
 
         if (maxAssets && maxAssets > 0) {
             assets = assets.slice(0, maxAssets);
-            console.log(`Limited to first ${assets.length} assets for testing`);
+            Logger.info(`Limited to first ${assets.length} assets for testing`);
         } else {
-            console.log(`Found ${assets.length} remote assets to sync`);
+            Logger.info(`Found ${assets.length} remote assets to sync`);
         }
 
         const toDelete: string[] = [];
@@ -94,20 +115,18 @@ export class ShopifyThemes {
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteAssetKeys));
 
             if (toDelete.length > 0) {
-                console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+                Logger.info(`Mirror mode: ${toDelete.length} local files will be deleted`);
             }
         }
 
-        if (dryRun) {
-            console.log('\nDRY RUN SUMMARY:');
-            console.log(`Assets to sync: ${assets.length}`);
-            if (mirror && toDelete.length > 0) {
-                console.log(`Local files to delete: ${toDelete.length}`);
-                toDelete.slice(0, 10).forEach((file: string) => console.log(`  - ${file}`));
-                if (toDelete.length > 10) {
-                    console.log(`  ... and ${toDelete.length - 10} more files`);
-                }
-            }
+        dryRunManager.logSummary({
+            itemsToSync: assets.length,
+            itemsToDelete: mirror ? toDelete.length : undefined,
+            deleteList: toDelete,
+            itemType: 'Assets'
+        });
+
+        if (!dryRunManager.shouldExecute()) {
             return;
         }
 
@@ -121,10 +140,10 @@ export class ShopifyThemes {
         if (assets.length > 0) {
             await this.downloadAssets(site, accessToken, theme.id, assets, finalOutputPath);
         } else {
-            console.log('No assets to sync');
+            Logger.info('No assets to sync');
         }
 
-        console.log(`Successfully pulled theme "${theme.name}" to ${finalOutputPath}`);
+        Logger.success(`Successfully pulled theme "${theme.name}" to ${finalOutputPath}`);
     }
 
     async push(themeName: string | null, inputPath: string, site: string, accessToken: string, dryRun: boolean = false, mirror: boolean = false, published: boolean = false): Promise<void> {
@@ -152,7 +171,7 @@ export class ShopifyThemes {
         }
 
         const themeFolder = this.resolveThemePath(inputPath, theme.name);
-        console.log(`${dryRun ? 'Would push' : 'Pushing'} local theme files from "${themeFolder}" to theme "${theme.name}" (ID: ${theme.id})`);
+        dryRunManager.logAction('push', `local theme files from "${themeFolder}" to theme "${theme.name}" (ID: ${theme.id})`);
 
         const localFiles = this.collectLocalThemeFiles(themeFolder);
 
@@ -171,36 +190,34 @@ export class ShopifyThemes {
             });
 
             if (toDelete.length > 0) {
-                console.log(`Mirror mode: ${toDelete.length} remote files will be deleted`);
+                Logger.info(`Mirror mode: ${toDelete.length} remote files will be deleted`);
             }
         }
 
-        console.log(`Found ${localFiles.length} local files to upload`);
+        Logger.info(`Found ${localFiles.length} local files to upload`);
 
-        if (dryRun) {
-            console.log('\nDRY RUN SUMMARY:');
-            console.log(`Files to upload: ${localFiles.length}`);
-            if (mirror && toDelete.length > 0) {
-                console.log(`Remote files to delete: ${toDelete.length}`);
-                toDelete.slice(0, 10).forEach(asset => console.log(`  - ${asset.key}`));
-                if (toDelete.length > 10) {
-                    console.log(`  ... and ${toDelete.length - 10} more files`);
-                }
-            }
+        dryRunManager.logSummary({
+            itemsToUpload: localFiles.length,
+            itemsToDelete: mirror ? toDelete.length : undefined,
+            deleteList: toDelete.map(asset => asset.key),
+            itemType: 'Files'
+        });
+
+        if (!dryRunManager.shouldExecute()) {
             return;
         }
 
         if (localFiles.length > 0) {
             await this.uploadAssets(site, accessToken, theme.id, localFiles);
         } else {
-            console.log('No files to upload');
+            Logger.info('No files to upload');
         }
 
         if (mirror && toDelete.length > 0) {
             await this.deleteAssets(site, accessToken, theme.id, toDelete);
         }
 
-        console.log(`Successfully pushed theme "${theme.name}"`);
+        Logger.success(`Successfully pushed theme "${theme.name}"`);
     }
 
     private async fetchThemes(site: string, accessToken: string): Promise<ThemeListResult> {
@@ -294,7 +311,7 @@ export class ShopifyThemes {
 
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
-            console.log(`Downloading (${i + 1}/${assets.length}): ${asset.key}`);
+            Logger.progress(i + 1, assets.length, `Downloading ${asset.key}`);
 
             try {
                 const content = await rateLimitedFetch(asset.key);
@@ -313,7 +330,7 @@ export class ShopifyThemes {
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to download ${asset.key}: ${message}`);
+                Logger.warn(`Failed to download ${asset.key}: ${message}`);
             }
         }
     }
@@ -387,13 +404,13 @@ export class ShopifyThemes {
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            console.log(`Uploading (${i + 1}/${files.length}): ${file.key}`);
+            Logger.progress(i + 1, files.length, `Uploading ${file.key}`);
 
             try {
                 await rateLimitedUpload(file);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to upload ${file.key}: ${message}`);
+                Logger.warn(`Failed to upload ${file.key}: ${message}`);
             }
         }
     }
@@ -427,13 +444,13 @@ export class ShopifyThemes {
 
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
-            console.log(`Deleting (${i + 1}/${assets.length}): ${asset.key}`);
+            Logger.progress(i + 1, assets.length, `Deleting ${asset.key}`);
 
             try {
                 await rateLimitedDelete(asset);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to delete ${asset.key}: ${message}`);
+                Logger.warn(`Failed to delete ${asset.key}: ${message}`);
             }
         }
     }
@@ -477,11 +494,11 @@ export class ShopifyThemes {
             try {
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);
-                    console.log(`Deleted local file: ${file}`);
+                    Logger.info(`Deleted local file: ${file}`);
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to delete local file ${file}: ${message}`);
+                Logger.warn(`Failed to delete local file ${file}: ${message}`);
             }
         });
     }
@@ -499,15 +516,7 @@ export class ShopifyThemes {
     }
 }
 
-export async function themesPullCommand(options: {
-    themeName?: string;
-    output: string;
-    dryRun?: boolean;
-    mirror?: boolean;
-    published?: boolean;
-    site?: string;
-    accessToken?: string;
-}): Promise<void> {
+export async function themesPullCommand(options: ThemesPullOptions): Promise<void> {
     const themes = new ShopifyThemes();
 
     try {
@@ -518,20 +527,12 @@ export async function themesPullCommand(options: {
 
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to pull theme: ${message}`);
+        Logger.error(`Failed to pull theme: ${message}`);
         process.exit(1);
     }
 }
 
-export async function themesPushCommand(options: {
-    themeName?: string;
-    input: string;
-    dryRun?: boolean;
-    mirror?: boolean;
-    published?: boolean;
-    site?: string;
-    accessToken?: string;
-}): Promise<void> {
+export async function themesPushCommand(options: ThemesPushOptions): Promise<void> {
     const themes = new ShopifyThemes();
 
     try {
@@ -542,7 +543,7 @@ export async function themesPushCommand(options: {
 
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to push theme: ${message}`);
+        Logger.error(`Failed to push theme: ${message}`);
         process.exit(1);
     }
 }

@@ -6,6 +6,7 @@ import { HttpClient } from '../utils/http-client';
 import { SHOPIFY_API } from '../settings';
 import { CredentialResolver } from '../utils/auth';
 import { IOUtility } from '../utils/io';
+import { Logger } from '../utils/logger';
 
 interface Page {
     id: number;
@@ -24,6 +25,23 @@ interface PageListResult {
     pages: Page[];
 }
 
+export interface PagesPullOptions {
+    output: string;
+    maxPages?: number;
+    dryRun?: boolean;
+    mirror?: boolean;
+    site?: string;
+    accessToken?: string;
+}
+
+export interface PagesPushOptions {
+    input: string;
+    dryRun?: boolean;
+    mirror?: boolean;
+    site?: string;
+    accessToken?: string;
+}
+
 export class ShopifyPages {
     private httpClient = new HttpClient();
 
@@ -34,9 +52,9 @@ export class ShopifyPages {
         dryRunManager.logDryRunHeader(`Pull pages${mirror ? ' (Mirror Mode)' : ''}`);
 
         const finalOutputPath = IOUtility.buildResourcePath(outputPath, 'pages');
-        console.log(`${dryRun ? 'Would pull' : 'Pulling'} pages to: ${finalOutputPath}`);
+        dryRunManager.logAction('pull', `pages to: ${finalOutputPath}`);
 
-        if (!dryRun) {
+        if (dryRunManager.shouldExecute()) {
             IOUtility.ensureDirectoryExists(finalOutputPath);
         }
 
@@ -44,9 +62,9 @@ export class ShopifyPages {
 
         if (maxPages && maxPages > 0) {
             pages = pages.slice(0, maxPages);
-            console.log(`Limited to first ${pages.length} pages for testing`);
+            Logger.info(`Limited to first ${pages.length} pages for testing`);
         } else {
-            console.log(`Found ${pages.length} remote pages to sync`);
+            Logger.info(`Found ${pages.length} remote pages to sync`);
         }
 
         const toDelete: string[] = [];
@@ -56,20 +74,18 @@ export class ShopifyPages {
             toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remotePageHandles));
 
             if (toDelete.length > 0) {
-                console.log(`Mirror mode: ${toDelete.length} local files will be deleted`);
+                Logger.info(`Mirror mode: ${toDelete.length} local files will be deleted`);
             }
         }
 
-        if (dryRun) {
-            console.log('\nDRY RUN SUMMARY:');
-            console.log(`Pages to sync: ${pages.length}`);
-            if (mirror && toDelete.length > 0) {
-                console.log(`Local files to delete: ${toDelete.length}`);
-                toDelete.slice(0, 10).forEach((file: string) => console.log(`  - ${file}`));
-                if (toDelete.length > 10) {
-                    console.log(`  ... and ${toDelete.length - 10} more files`);
-                }
-            }
+        dryRunManager.logSummary({
+            itemsToSync: pages.length,
+            itemsToDelete: mirror ? toDelete.length : undefined,
+            deleteList: toDelete,
+            itemType: 'Pages'
+        });
+
+        if (!dryRunManager.shouldExecute()) {
             return;
         }
 
@@ -80,10 +96,10 @@ export class ShopifyPages {
         if (pages.length > 0) {
             await this.downloadPages(pages, finalOutputPath);
         } else {
-            console.log('No pages to sync');
+            Logger.info('No pages to sync');
         }
 
-        console.log(`Successfully pulled pages to ${finalOutputPath}`);
+        Logger.success(`Successfully pulled pages to ${finalOutputPath}`);
     }
 
     async push(inputPath: string, site: string, accessToken: string, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
@@ -91,7 +107,7 @@ export class ShopifyPages {
         dryRunManager.logDryRunHeader(`Push pages${mirror ? ' (Mirror Mode)' : ''}`);
 
         const pagesPath = this.resolvePagesPath(inputPath);
-        console.log(`${dryRun ? 'Would push' : 'Pushing'} local pages from "${pagesPath}"`);
+        dryRunManager.logAction('push', `local pages from "${pagesPath}"`);
 
         const localFiles = this.collectLocalPageFiles(pagesPath);
 
@@ -110,36 +126,34 @@ export class ShopifyPages {
             });
 
             if (toDelete.length > 0) {
-                console.log(`Mirror mode: ${toDelete.length} remote pages will be deleted`);
+                Logger.info(`Mirror mode: ${toDelete.length} remote pages will be deleted`);
             }
         }
 
-        console.log(`Found ${localFiles.length} local pages to upload`);
+        Logger.info(`Found ${localFiles.length} local pages to upload`);
 
-        if (dryRun) {
-            console.log('\nDRY RUN SUMMARY:');
-            console.log(`Pages to upload: ${localFiles.length}`);
-            if (mirror && toDelete.length > 0) {
-                console.log(`Remote pages to delete: ${toDelete.length}`);
-                toDelete.slice(0, 10).forEach(item => console.log(`  - ${item.key}`));
-                if (toDelete.length > 10) {
-                    console.log(`  ... and ${toDelete.length - 10} more pages`);
-                }
-            }
+        dryRunManager.logSummary({
+            itemsToUpload: localFiles.length,
+            itemsToDelete: mirror ? toDelete.length : undefined,
+            deleteList: toDelete.map(item => item.key),
+            itemType: 'Pages'
+        });
+
+        if (!dryRunManager.shouldExecute()) {
             return;
         }
 
         if (localFiles.length > 0) {
             await this.uploadPages(site, accessToken, localFiles);
         } else {
-            console.log('No pages to upload');
+            Logger.info('No pages to upload');
         }
 
         if (mirror && toDelete.length > 0) {
             await this.deletePages(site, accessToken, toDelete.map(item => item.page));
         }
 
-        console.log('Successfully pushed pages');
+        Logger.success('Successfully pushed pages');
     }
 
     private async fetchPages(site: string, accessToken: string): Promise<Page[]> {
@@ -201,10 +215,10 @@ export class ShopifyPages {
             const filePath = path.join(outputPath, file);
             try {
                 fs.unlinkSync(filePath);
-                console.log(`Deleted local file: ${file}`);
+                Logger.info(`Deleted local file: ${file}`);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to delete ${file}: ${message}`);
+                Logger.warn(`Failed to delete ${file}: ${message}`);
             }
         });
     }
@@ -217,13 +231,13 @@ export class ShopifyPages {
 
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
-            console.log(`Downloading (${i + 1}/${pages.length}): ${page.handle}.html`);
+            Logger.progress(i + 1, pages.length, `Downloading ${page.handle}.html`);
 
             try {
                 await rateLimitedDownload(page);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to download ${page.handle}: ${message}`);
+                Logger.warn(`Failed to download ${page.handle}: ${message}`);
             }
         }
     }
@@ -289,13 +303,13 @@ export class ShopifyPages {
 
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
-            console.log(`Uploading (${i + 1}/${files.length}): ${file.handle}.html`);
+            Logger.progress(i + 1, files.length, `Uploading ${file.handle}.html`);
 
             try {
                 await rateLimitedUpload(file);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to upload ${file.handle}: ${message}`);
+                Logger.warn(`Failed to upload ${file.handle}: ${message}`);
             }
         }
     }
@@ -330,13 +344,13 @@ export class ShopifyPages {
 
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
-            console.log(`Deleting (${i + 1}/${pages.length}): ${page.handle}`);
+            Logger.progress(i + 1, pages.length, `Deleting ${page.handle}`);
 
             try {
                 await rateLimitedDelete(page);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Failed to delete ${page.handle}: ${message}`);
+                Logger.warn(`Failed to delete ${page.handle}: ${message}`);
             }
         }
     }
@@ -354,7 +368,7 @@ export class ShopifyPages {
 }
 
 // Export command functions to match the theme pattern
-export async function pagesPullCommand(options: any): Promise<void> {
+export async function pagesPullCommand(options: PagesPullOptions): Promise<void> {
     const pages = new ShopifyPages();
     const credentials = CredentialResolver.resolve(options);
     CredentialResolver.validateRequiredOptions(options, ['output']);
@@ -369,7 +383,7 @@ export async function pagesPullCommand(options: any): Promise<void> {
     );
 }
 
-export async function pagesPushCommand(options: any): Promise<void> {
+export async function pagesPushCommand(options: PagesPushOptions): Promise<void> {
     const pages = new ShopifyPages();
     const credentials = CredentialResolver.resolve(options);
     CredentialResolver.validateRequiredOptions(options, ['input']);

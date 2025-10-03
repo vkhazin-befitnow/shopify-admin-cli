@@ -3,6 +3,8 @@
  * and transient network errors
  */
 
+import { Logger } from './logger';
+
 export interface RetryOptions {
     maxAttempts?: number;
     baseDelayMs?: number;
@@ -63,7 +65,7 @@ export class RetryUtility {
                 totalDelayMs += delay;
 
                 const message = error instanceof Error ? error.message : String(error);
-                console.warn(`Attempt ${attempt}/${opts.maxAttempts} failed: ${message}. Retrying in ${delay}ms...`);
+                Logger.warn(`Attempt ${attempt}/${opts.maxAttempts} failed: ${message}. Retrying in ${delay}ms...`);
 
                 await this.sleep(delay);
             }
