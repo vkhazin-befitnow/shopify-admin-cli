@@ -155,6 +155,22 @@ shopify-admin pages push --input ./pages --dry-run
 shopify-admin pages push --input ./pages
 ```
 
+### Menu Management Workflow
+
+```bash
+# Pull menus (navigation/link lists)
+shopify-admin menus pull --output ./menus
+
+# Edit menus locally (JSON format)
+# ... edit menu files ...
+
+# Preview changes
+shopify-admin menus push --input ./menus --dry-run
+
+# Deploy changes
+shopify-admin menus push --input ./menus
+```
+
 ### File Management Workflow
 
 ```bash
@@ -180,36 +196,30 @@ shopify-admin files push --input ./files --mirror
 Pull or push multiple components in a single operation:
 
 ```bash
-# Pull theme, pages, and files (default behavior - no --components needed)
+# Pull all components (default behavior - no --components needed)
 shopify-admin pull --output ./backup
 
 # Or explicitly specify components
-shopify-admin pull --components=theme,pages,files --output ./backup
+shopify-admin pull --components=theme,pages,files,menus --output ./backup
 
-# Pull only theme
-shopify-admin pull --components=theme --output ./backup
+# Pull specific components
+shopify-admin pull --components=pages,menus --output ./backup
 
-# Pull only pages
-shopify-admin pull --components=pages --output ./backup
-
-# Pull only files
-shopify-admin pull --components=files --output ./backup
-
-# Push theme, pages, and files (default behavior - no --components needed)
+# Push all components (default behavior - no --components needed)
 shopify-admin push --input ./backup --mirror --dry-run
 shopify-admin push --input ./backup --mirror
 
 # Or explicitly specify components
-shopify-admin push --components=theme,pages,files --input ./backup --mirror
+shopify-admin push --components=theme,pages,files,menus --input ./backup --mirror
 
 # Push specific components
 shopify-admin push --components=pages,files --input ./backup
 ```
 
 Features:
-- Default components: `theme,pages,files` (pulls/pushes all when --components not specified)
-- Orchestrates theme (published), pages, and files operations
-- Files stored in `output/files/` folder, pages in `output/pages/`, themes in `output/themes/[ThemeName]/`
+- Default components: `theme,pages,files,menus` (pulls/pushes all when --components not specified)
+- Orchestrates theme (published), pages, files, and menus operations
+- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`
 - Supports all standard options: `--dry-run`, `--mirror`, credentials
 - Processes components sequentially with clear progress output
 - Stops on first error for safety

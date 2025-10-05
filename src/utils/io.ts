@@ -4,11 +4,11 @@ import * as path from 'path';
 export class IOUtility {
     /**
      * Builds a resource path following the standard structure:
-     * root/files, root/pages, or root/themes/theme-name
+     * root/files, root/pages, root/menus, or root/themes/theme-name
      */
     static buildResourcePath(
         root: string,
-        resource: 'files' | 'pages' | 'themes',
+        resource: 'files' | 'pages' | 'menus' | 'themes',
         themeName?: string
     ): string {
         return themeName

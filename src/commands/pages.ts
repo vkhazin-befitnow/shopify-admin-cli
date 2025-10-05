@@ -57,7 +57,7 @@ export interface PagesPushOptions {
 export class ShopifyPages {
     private static readonly HTML_EXTENSION = '.html';
     private static readonly META_EXTENSION = '.meta';
-    
+
     private httpClient = new HttpClient();
 
     async pull(outputPath: string, site: string, accessToken: string, maxPages?: number, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
@@ -124,7 +124,7 @@ export class ShopifyPages {
         if (downloadResult.failed > 0) {
             summary.push(`Failed: ${downloadResult.failed}`);
         }
-        
+
         Logger.success(summary.join(' | '));
 
         if (downloadResult.errors.length > 0) {
@@ -281,11 +281,6 @@ export class ShopifyPages {
     }
 
     private async downloadPages(pages: Page[], outputPath: string): Promise<{ downloaded: number, failed: number, errors: string[] }> {
-        const rateLimitedDownload = RetryUtility.rateLimited(
-            (page: Page) => this.downloadSinglePage(page, outputPath),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         const result = { downloaded: 0, failed: 0, errors: [] as string[] };
 
         for (let i = 0; i < pages.length; i++) {
@@ -293,7 +288,10 @@ export class ShopifyPages {
             Logger.progress(i + 1, pages.length, `Downloading ${page.handle}${ShopifyPages.HTML_EXTENSION}`);
 
             try {
-                await rateLimitedDownload(page);
+                await RetryUtility.withRetry(
+                    () => this.downloadSinglePage(page, outputPath),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
                 result.downloaded++;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
@@ -388,11 +386,6 @@ export class ShopifyPages {
     }
 
     private async uploadPages(site: string, accessToken: string, files: Array<{ handle: string, filePath: string, pageId?: number }>): Promise<{ uploaded: number, failed: number, errors: string[] }> {
-        const rateLimitedUpload = RetryUtility.rateLimited(
-            (file: { handle: string, filePath: string, pageId?: number }) => this.uploadSinglePage(site, accessToken, file),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         const result = { uploaded: 0, failed: 0, errors: [] as string[] };
 
         for (let i = 0; i < files.length; i++) {
@@ -400,7 +393,10 @@ export class ShopifyPages {
             Logger.progress(i + 1, files.length, `Uploading ${file.handle}${ShopifyPages.HTML_EXTENSION}`);
 
             try {
-                await rateLimitedUpload(file);
+                await RetryUtility.withRetry(
+                    () => this.uploadSinglePage(site, accessToken, file),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
                 result.uploaded++;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
@@ -427,7 +423,7 @@ export class ShopifyPages {
             try {
                 const metaContent = fs.readFileSync(metaPath, 'utf8');
                 const metadata = yaml.load(metaContent) as PageMetadata;
-                
+
                 if (metadata.title) {
                     pageData.title = metadata.title;
                 }
@@ -457,11 +453,6 @@ export class ShopifyPages {
     }
 
     private async deletePages(site: string, accessToken: string, pages: Page[]): Promise<{ deleted: number, failed: number, errors: string[] }> {
-        const rateLimitedDelete = RetryUtility.rateLimited(
-            (page: Page) => this.deleteSinglePage(site, accessToken, page),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         const result = { deleted: 0, failed: 0, errors: [] as string[] };
 
         for (let i = 0; i < pages.length; i++) {
@@ -469,7 +460,10 @@ export class ShopifyPages {
             Logger.progress(i + 1, pages.length, `Deleting ${page.handle}`);
 
             try {
-                await rateLimitedDelete(page);
+                await RetryUtility.withRetry(
+                    () => this.deleteSinglePage(site, accessToken, page),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
                 result.deleted++;
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);

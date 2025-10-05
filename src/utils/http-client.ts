@@ -1,6 +1,8 @@
 import { RetryUtility } from './retry';
 import { SHOPIFY_API } from '../settings';
 
+export type ResourceType = 'themes' | 'pages' | 'files' | 'menus';
+
 /**
  * Shared HTTP client for making requests to Shopify APIs
  * with built-in retry logic and error handling
@@ -20,7 +22,7 @@ export class HttpClient {
         options: {
             body?: any;
             headers?: Record<string, string>;
-            resourceType?: string;
+            resourceType?: ResourceType;
             operationContext?: string;
         } = {}
     ): Promise<Response> {
@@ -64,7 +66,8 @@ export class HttpClient {
         const scopeHints: Record<string, string> = {
             'themes': '. Ensure your app has read_themes and write_themes scopes',
             'pages': '. Ensure your app has read_online_store_pages and write_online_store_pages scopes',
-            'files': '. Ensure your app has read_files and write_files scopes'
+            'files': '. Ensure your app has read_files and write_files scopes',
+            'menus': '. Ensure your app has read_online_store_navigation and write_online_store_navigation scopes'
         };
         return scopeHints[resourceType] || '';
     }

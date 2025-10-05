@@ -37,7 +37,8 @@ async function testBasicRetry() {
 
     const result = await RetryUtility.withRetry(fn, {
         maxAttempts: 5,
-        baseDelayMs: 10 // Fast for testing
+        baseDelayMs: 10, // Fast for testing
+        retryableErrors: ['Test error'] // Make test errors retryable
     });
 
     assert.equal(result, 'Success on attempt 3');
@@ -53,7 +54,8 @@ async function testRetryExhaustion() {
     try {
         await RetryUtility.withRetry(fn, {
             maxAttempts: 3,
-            baseDelayMs: 10
+            baseDelayMs: 10,
+            retryableErrors: ['Persistent error'] // Make test errors retryable
         });
         assert.fail('Expected error to be thrown');
     } catch (error: any) {
@@ -136,7 +138,8 @@ async function testExponentialBackoff() {
     await RetryUtility.withRetry(fn, {
         maxAttempts: 5,
         baseDelayMs: 100,
-        backoffMultiplier: 2
+        backoffMultiplier: 2,
+        retryableErrors: ['Test error'] // Make test errors retryable
     });
 
     const endTime = Date.now();
@@ -191,7 +194,8 @@ async function testMaxDelayLimit() {
         maxAttempts: 3,
         baseDelayMs: 1000,
         maxDelayMs: 100, // Cap delay at 100ms
-        backoffMultiplier: 10 // Would normally create very long delays
+        backoffMultiplier: 10, // Would normally create very long delays
+        retryableErrors: ['Test error'] // Make test errors retryable
     });
 
     const endTime = Date.now();

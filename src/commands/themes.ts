@@ -304,17 +304,15 @@ export class ShopifyThemes {
             fs.mkdirSync(path.join(outputPath, dir), { recursive: true });
         });
 
-        const rateLimitedFetch = RetryUtility.rateLimited(
-            (key: string) => this.fetchAssetContent(site, accessToken, themeId, key),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
             Logger.progress(i + 1, assets.length, `Downloading ${asset.key}`);
 
             try {
-                const content = await rateLimitedFetch(asset.key);
+                const content = await RetryUtility.withRetry(
+                    () => this.fetchAssetContent(site, accessToken, themeId, asset.key),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
                 const filePath = path.join(outputPath, asset.key);
 
                 // Ensure the directory for this file exists
@@ -397,17 +395,15 @@ export class ShopifyThemes {
     }
 
     private async uploadAssets(site: string, accessToken: string, themeId: number, files: Array<{ key: string, filePath: string, isImage: boolean }>): Promise<void> {
-        const rateLimitedUpload = RetryUtility.rateLimited(
-            (file: { key: string, filePath: string, isImage: boolean }) => this.uploadSingleAsset(site, accessToken, themeId, file),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             Logger.progress(i + 1, files.length, `Uploading ${file.key}`);
 
             try {
-                await rateLimitedUpload(file);
+                await RetryUtility.withRetry(
+                    () => this.uploadSingleAsset(site, accessToken, themeId, file),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to upload ${file.key}: ${message}`);
@@ -437,17 +433,15 @@ export class ShopifyThemes {
 
 
     private async deleteAssets(site: string, accessToken: string, themeId: number, assets: Asset[]): Promise<void> {
-        const rateLimitedDelete = RetryUtility.rateLimited(
-            (asset: Asset) => this.deleteSingleAsset(site, accessToken, themeId, asset),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         for (let i = 0; i < assets.length; i++) {
             const asset = assets[i];
             Logger.progress(i + 1, assets.length, `Deleting ${asset.key}`);
 
             try {
-                await rateLimitedDelete(asset);
+                await RetryUtility.withRetry(
+                    () => this.deleteSingleAsset(site, accessToken, themeId, asset),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to delete ${asset.key}: ${message}`);

@@ -5,6 +5,7 @@ import { authValidateCommand } from './commands/auth';
 import { themesPullCommand, themesPushCommand } from './commands/themes';
 import { filesPullCommand, filesPushCommand } from './commands/files';
 import { pagesPullCommand, pagesPushCommand } from './commands/pages';
+import { menusPullCommand, menusPushCommand } from './commands/menus';
 import { CLI_VERSION } from './settings';
 import { Logger } from './utils/logger';
 
@@ -155,11 +156,41 @@ pagesCommand
     await pagesPushCommand(options);
   });
 
+const menusCommand = program
+  .command('menus')
+  .description('Menu management commands')
+  .addHelpCommand(false);
+
+menusCommand
+  .command('pull')
+  .description('Download menus from Shopify store')
+  .requiredOption('--output <path>', 'Output directory path')
+  .option('--max-menus <number>', 'Maximum number of menus to download (for testing)', parseInt)
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await menusPullCommand(options);
+  });
+
+menusCommand
+  .command('push')
+  .description('Upload local menus to Shopify store')
+  .requiredOption('--input <path>', 'Input directory path containing menu files')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete remote menus not present locally (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await menusPushCommand(options);
+  });
+
 program
   .command('pull')
   .description('Pull all or specified components from Shopify store')
   .requiredOption('--output <path>', 'Output directory path')
-  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages)', 'theme,files,pages')
+  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus)', 'theme,files,pages,menus')
   .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
@@ -167,7 +198,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages'];
+    const validComponents = ['theme', 'files', 'pages', 'menus'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -210,6 +241,14 @@ program
             site: options.site,
             accessToken: options.accessToken
           });
+        } else if (component === 'menus') {
+          await menusPullCommand({
+            output: options.output,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
         }
         Logger.success(`${component} pull completed`);
       } catch (error) {
@@ -228,7 +267,7 @@ program
   .command('push')
   .description('Push all or specified components to Shopify store')
   .requiredOption('--input <path>', 'Input directory path')
-  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages)', 'theme,files,pages')
+  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus)', 'theme,files,pages,menus')
   .option('--theme-name <name>', 'Theme name to upload to (required if pushing theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
@@ -236,7 +275,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages'];
+    const validComponents = ['theme', 'files', 'pages', 'menus'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -276,6 +315,14 @@ program
           });
         } else if (component === 'pages') {
           await pagesPushCommand({
+            input: options.input,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
+        } else if (component === 'menus') {
+          await menusPushCommand({
             input: options.input,
             dryRun: options.dryRun || false,
             mirror: options.mirror || false,

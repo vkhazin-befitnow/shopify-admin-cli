@@ -23,6 +23,7 @@ export const SHOPIFY_API = {
   RETRY_CONFIG: {
     maxAttempts: 3,
     baseDelayMs: 1000,
-    maxDelayMs: 10000
+    maxDelayMs: 10000,
+    rateLimitMs: 400
   }
 };

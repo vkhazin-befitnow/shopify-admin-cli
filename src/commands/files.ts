@@ -405,18 +405,16 @@ export class ShopifyFiles {
     }
 
     private async downloadFiles(files: FileNode[], outputPath: string): Promise<void> {
-        const rateLimitedDownload = RetryUtility.rateLimited(
-            (file: FileNode) => this.downloadSingleFile(file, outputPath),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const fileName = this.getFileName(file);
             Logger.progress(i + 1, files.length, `Downloading ${fileName}`);
 
             try {
-                await rateLimitedDownload(file);
+                await RetryUtility.withRetry(
+                    () => this.downloadSingleFile(file, outputPath),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to download ${fileName}: ${message}`);
@@ -534,17 +532,15 @@ export class ShopifyFiles {
     }
 
     private async uploadFiles(site: string, accessToken: string, files: Array<{ fileName: string, filePath: string, fileId?: string, metadata?: FileMetadata }>): Promise<void> {
-        const rateLimitedUpload = RetryUtility.rateLimited(
-            (file: { fileName: string, filePath: string, fileId?: string, metadata?: FileMetadata }) => this.uploadSingleFile(site, accessToken, file),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             Logger.progress(i + 1, files.length, `Uploading ${file.fileName}`);
 
             try {
-                await rateLimitedUpload(file);
+                await RetryUtility.withRetry(
+                    () => this.uploadSingleFile(site, accessToken, file),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to upload ${file.fileName}: ${message}`);
@@ -698,18 +694,16 @@ export class ShopifyFiles {
     }
 
     private async deleteFiles(site: string, accessToken: string, files: FileNode[]): Promise<void> {
-        const rateLimitedDelete = RetryUtility.rateLimited(
-            (file: FileNode) => this.deleteSingleFile(site, accessToken, file),
-            RetryUtility.RATE_LIMITS.SHOPIFY_API
-        );
-
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
             const fileName = this.getFileName(file);
             Logger.progress(i + 1, files.length, `Deleting ${fileName}`);
 
             try {
-                await rateLimitedDelete(file);
+                await RetryUtility.withRetry(
+                    () => this.deleteSingleFile(site, accessToken, file),
+                    SHOPIFY_API.RETRY_CONFIG
+                );
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to delete ${fileName}: ${message}`);

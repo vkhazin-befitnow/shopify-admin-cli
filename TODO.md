@@ -1,5 +1,26 @@
 # TODO: Code Quality Issues
 
+## Retry and Rate Limiting ✅ COMPLETED
+
+### Status: 100% Complete - All command files unified
+
+✅ **COMPLETED ACROSS ALL COMMAND FILES**: 
+- **menus.ts**: Single `RetryUtility.withRetry()` method handles retry + rate limiting + exponential backoff
+- **pages.ts**: Updated to use unified retry pattern (replaced 9 occurrences)
+- **files.ts**: Updated to use unified retry pattern (replaced 9 occurrences)  
+- **themes.ts**: Updated to use unified retry pattern (replaced 6 occurrences)
+- Uses unified `SHOPIFY_API.RETRY_CONFIG` configuration across all commands
+- Eliminated all scattered `RetryUtility.rateLimited()` calls from command files
+- Proper validation error detection (no retries for permanent failures)
+
+**Benefits Achieved**:
+- Consistent retry behavior across all Shopify API operations
+- Centralized rate limiting configuration (600ms between requests)
+- Proper error classification (validation errors fail immediately)
+- Reduced code duplication and maintenance burden
+- Unified exponential backoff strategy
+
+
 ## High Priority - Functionality & Consistency
 
 ### 11. **Duplicated Theme Selection Logic**
