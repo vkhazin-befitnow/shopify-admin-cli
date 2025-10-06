@@ -116,68 +116,16 @@ describe('Authentication', () => {
         process.env = { ...originalEnv };
     });
 
-    test('getCredentialsFromEnv: should return null when site is missing', () => {
+    test('getCredentialsFromEnv: should return null when credentials are missing or invalid', () => {
+        // Test missing site
         delete process.env.SHOPIFY_STORE_DOMAIN;
         process.env.SHOPIFY_ACCESS_TOKEN = 'test-token-123';
+        assert.strictEqual(getCredentialsFromEnv(), null);
 
-        const credentials = getCredentialsFromEnv();
-
-        assert.strictEqual(credentials, null);
-
-        process.env = { ...originalEnv };
-    });
-
-    test('getCredentialsFromEnv: should return null when access token is missing', () => {
-        process.env.SHOPIFY_STORE_DOMAIN = 'test-store.myshopify.com';
-        delete process.env.SHOPIFY_ACCESS_TOKEN;
-
-        const credentials = getCredentialsFromEnv();
-
-        assert.strictEqual(credentials, null);
-
-        process.env = { ...originalEnv };
-    });
-
-    test('getCredentialsFromEnv: should return null when both env vars are missing', () => {
-        delete process.env.SHOPIFY_STORE_DOMAIN;
-        delete process.env.SHOPIFY_ACCESS_TOKEN;
-
-        const credentials = getCredentialsFromEnv();
-
-        assert.strictEqual(credentials, null);
-
-        process.env = { ...originalEnv };
-    });
-
-    test('getCredentialsFromEnv: should return null when env vars are empty strings', () => {
+        // Test empty strings
         process.env.SHOPIFY_STORE_DOMAIN = '';
         process.env.SHOPIFY_ACCESS_TOKEN = '';
-
-        const credentials = getCredentialsFromEnv();
-
-        assert.strictEqual(credentials, null);
-
-        process.env = { ...originalEnv };
-    });
-
-    test('getCredentialsFromEnv: should return null when only site is empty', () => {
-        process.env.SHOPIFY_STORE_DOMAIN = '';
-        process.env.SHOPIFY_ACCESS_TOKEN = 'test-token-123';
-
-        const credentials = getCredentialsFromEnv();
-
-        assert.strictEqual(credentials, null);
-
-        process.env = { ...originalEnv };
-    });
-
-    test('getCredentialsFromEnv: should return null when only access token is empty', () => {
-        process.env.SHOPIFY_STORE_DOMAIN = 'test-store.myshopify.com';
-        process.env.SHOPIFY_ACCESS_TOKEN = '';
-
-        const credentials = getCredentialsFromEnv();
-
-        assert.strictEqual(credentials, null);
+        assert.strictEqual(getCredentialsFromEnv(), null);
 
         process.env = { ...originalEnv };
     });

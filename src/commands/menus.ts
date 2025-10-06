@@ -126,7 +126,7 @@ export class ShopifyMenus {
         const dryRunManager = new DryRunManager(dryRun);
         dryRunManager.logDryRunHeader(`Push menus${mirror ? ' (Mirror Mode)' : ''}`);
 
-        const menusPath = this.resolveMenusPath(inputPath, mirror);
+        const menusPath = IOUtility.prepareResourcePath(inputPath, 'menus');
         dryRunManager.logAction('push', `local menus from "${menusPath}"`);
 
         const localFiles = this.collectLocalMenuFiles(menusPath);
@@ -267,42 +267,20 @@ export class ShopifyMenus {
     }
 
     private findLocalFilesToDelete(outputPath: string, remoteMenuHandles: Set<string>): string[] {
-        const toDelete: string[] = [];
-
-        if (!fs.existsSync(outputPath)) {
-            return toDelete;
-        }
-
-        const files = fs.readdirSync(outputPath, { withFileTypes: true });
-
-        files.forEach(file => {
-            if (file.isFile() && file.name.endsWith(ShopifyMenus.JSON_EXTENSION)) {
-                if (!remoteMenuHandles.has(file.name)) {
-                    toDelete.push(file.name);
-                    const metaFile = `${file.name}${ShopifyMenus.META_EXTENSION}`;
-                    if (files.some(f => f.name === metaFile)) {
-                        toDelete.push(metaFile);
-                    }
-                }
-            }
+        return IOUtility.findFilesToDelete(outputPath, remoteMenuHandles, {
+            fileExtension: ShopifyMenus.JSON_EXTENSION
         });
-
-        return toDelete;
     }
 
     private deleteLocalFiles(outputPath: string, filesToDelete: string[]): number {
-        let deletedCount = 0;
-        filesToDelete.forEach(file => {
-            const filePath = path.join(outputPath, file);
-            try {
-                fs.unlinkSync(filePath);
-                Logger.info(`Deleted local file: ${file}`);
-                deletedCount++;
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Logger.error(`Failed to delete ${file}: ${message}`);
-            }
+        const deletedCount = IOUtility.deleteLocalFiles(outputPath, filesToDelete, (file, error) => {
+            Logger.error(`Failed to delete ${file}: ${error}`);
         });
+
+        filesToDelete.forEach(file => {
+            Logger.info(`Deleted local file: ${file}`);
+        });
+
         return deletedCount;
     }
 
@@ -334,10 +312,7 @@ export class ShopifyMenus {
     private async downloadSingleMenu(menu: Menu, outputPath: string): Promise<void> {
         const filePath = this.getMenuFilePath(outputPath, menu);
 
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
+        IOUtility.ensureDirectoryExists(path.dirname(filePath));
 
         fs.writeFileSync(filePath, JSON.stringify(menu.items, null, 2), 'utf8');
 
@@ -350,25 +325,7 @@ export class ShopifyMenus {
         fs.writeFileSync(metaPath, yaml.dump(metadata), 'utf8');
     }
 
-    private resolveMenusPath(basePath: string, allowEmpty: boolean = false): string {
-        const menusPath = IOUtility.buildResourcePath(basePath, 'menus');
 
-        if (!fs.existsSync(menusPath)) {
-            throw new Error(
-                `Menus directory not found: ${menusPath}\n` +
-                `Expected structure: ${basePath}/menus/`
-            );
-        }
-
-        const entries = fs.readdirSync(menusPath);
-        const hasJsonFiles = entries.some(entry => entry.endsWith(ShopifyMenus.JSON_EXTENSION));
-
-        if (!hasJsonFiles && !allowEmpty) {
-            throw new Error(`No JSON files found in directory: ${menusPath}`);
-        }
-
-        return menusPath;
-    }
 
     private collectLocalMenuFiles(inputPath: string): Array<{ handle: string, filePath: string, menuId?: string }> {
         const files: Array<{ handle: string, filePath: string, menuId?: string }> = [];

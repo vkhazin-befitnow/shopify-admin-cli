@@ -179,7 +179,7 @@ export class ShopifyFiles {
         const dryRunManager = new DryRunManager(dryRun);
         dryRunManager.logDryRunHeader(`Push files${mirror ? ' (Mirror Mode)' : ''}`);
 
-        const filesPath = this.resolveFilesPath(inputPath);
+        const filesPath = IOUtility.prepareResourcePath(inputPath, 'files');
         dryRunManager.logAction('push', `local files from "${filesPath}"`);
 
         const localFiles = this.collectLocalFiles(filesPath);
@@ -366,41 +366,16 @@ export class ShopifyFiles {
     }
 
     private findLocalFilesToDelete(outputPath: string, remoteFileNames: Set<string>): string[] {
-        const toDelete: string[] = [];
-
-        if (!fs.existsSync(outputPath)) {
-            return toDelete;
-        }
-
-        const files = fs.readdirSync(outputPath, { withFileTypes: true });
-
-        files.forEach(file => {
-            if (file.isFile() && !file.name.endsWith('.meta')) {
-                if (!remoteFileNames.has(file.name)) {
-                    toDelete.push(file.name);
-                }
-            }
-        });
-
-        return toDelete;
+        return IOUtility.findFilesToDelete(outputPath, remoteFileNames);
     }
 
     private deleteLocalFiles(outputPath: string, filesToDelete: string[]): void {
-        filesToDelete.forEach(file => {
-            const filePath = path.join(outputPath, file);
-            try {
-                fs.unlinkSync(filePath);
-                Logger.info(`Deleted local file: ${file}`);
+        IOUtility.deleteLocalFiles(outputPath, filesToDelete, (file, error) => {
+            Logger.warn(`Failed to delete ${file}: ${error}`);
+        });
 
-                const metaPath = `${filePath}.meta`;
-                if (fs.existsSync(metaPath)) {
-                    fs.unlinkSync(metaPath);
-                    Logger.info(`Deleted metadata: ${file}.meta`);
-                }
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Logger.warn(`Failed to delete ${file}: ${message}`);
-            }
+        filesToDelete.forEach(file => {
+            Logger.info(`Deleted local file: ${file}`);
         });
     }
 
@@ -451,10 +426,7 @@ export class ShopifyFiles {
             const arrayBuffer = await response.arrayBuffer();
             const buffer = Buffer.from(arrayBuffer);
 
-            const dirPath = path.dirname(filePath);
-            if (!fs.existsSync(dirPath)) {
-                fs.mkdirSync(dirPath, { recursive: true });
-            }
+            IOUtility.ensureDirectoryExists(path.dirname(filePath));
 
             fs.writeFileSync(filePath, buffer);
 
@@ -476,28 +448,7 @@ export class ShopifyFiles {
         return 'FILE';
     }
 
-    private resolveFilesPath(basePath: string): string {
-        const filesPath = IOUtility.buildResourcePath(basePath, 'files');
 
-        if (!fs.existsSync(filesPath)) {
-            throw new Error(
-                `Files directory not found: ${filesPath}\n` +
-                `Expected structure: ${basePath}/files/`
-            );
-        }
-
-        const entries = fs.readdirSync(filesPath);
-        const hasFiles = entries.some(entry => {
-            const entryPath = path.join(filesPath, entry);
-            return fs.statSync(entryPath).isFile();
-        });
-
-        if (!hasFiles) {
-            throw new Error(`No files found in directory: ${filesPath}`);
-        }
-
-        return filesPath;
-    }
 
     private collectLocalFiles(inputPath: string): Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> {
         const files: Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> = [];

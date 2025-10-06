@@ -78,16 +78,6 @@ describe('ShopifyFiles', () => {
         assert.strictEqual(localFiles.length, 3);
     });
 
-    test('should resolve files path', () => {
-        const filesPath = path.join(testOutputPath, 'files');
-        fs.mkdirSync(filesPath, { recursive: true });
-        fs.writeFileSync(path.join(filesPath, 'test.jpg'), 'content');
-
-        const result = (files as any).resolveFilesPath(testOutputPath);
-
-        assert.strictEqual(result, filesPath);
-    });
-
     test('should identify files to delete in mirror mode', () => {
         const filesPath = path.join(testOutputPath, 'files');
         fs.mkdirSync(filesPath, { recursive: true });

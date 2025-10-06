@@ -137,7 +137,7 @@ export class ShopifyPages {
         const dryRunManager = new DryRunManager(dryRun);
         dryRunManager.logDryRunHeader(`Push pages${mirror ? ' (Mirror Mode)' : ''}`);
 
-        const pagesPath = this.resolvePagesPath(inputPath);
+        const pagesPath = IOUtility.prepareResourcePath(inputPath, 'pages');
         dryRunManager.logAction('push', `local pages from "${pagesPath}"`);
 
         const localFiles = this.collectLocalPageFiles(pagesPath);
@@ -241,42 +241,20 @@ export class ShopifyPages {
     }
 
     private findLocalFilesToDelete(outputPath: string, remotePageHandles: Set<string>): string[] {
-        const toDelete: string[] = [];
-
-        if (!fs.existsSync(outputPath)) {
-            return toDelete;
-        }
-
-        const files = fs.readdirSync(outputPath, { withFileTypes: true });
-
-        files.forEach(file => {
-            if (file.isFile() && file.name.endsWith(ShopifyPages.HTML_EXTENSION)) {
-                if (!remotePageHandles.has(file.name)) {
-                    toDelete.push(file.name);
-                    const metaFile = `${file.name}${ShopifyPages.META_EXTENSION}`;
-                    if (files.some(f => f.name === metaFile)) {
-                        toDelete.push(metaFile);
-                    }
-                }
-            }
+        return IOUtility.findFilesToDelete(outputPath, remotePageHandles, {
+            fileExtension: ShopifyPages.HTML_EXTENSION
         });
-
-        return toDelete;
     }
 
     private deleteLocalFiles(outputPath: string, filesToDelete: string[]): number {
-        let deletedCount = 0;
-        filesToDelete.forEach(file => {
-            const filePath = path.join(outputPath, file);
-            try {
-                fs.unlinkSync(filePath);
-                Logger.info(`Deleted local file: ${file}`);
-                deletedCount++;
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Logger.warn(`Failed to delete ${file}: ${message}`);
-            }
+        const deletedCount = IOUtility.deleteLocalFiles(outputPath, filesToDelete, (file, error) => {
+            Logger.warn(`Failed to delete ${file}: ${error}`);
         });
+
+        filesToDelete.forEach(file => {
+            Logger.info(`Deleted local file: ${file}`);
+        });
+
         return deletedCount;
     }
 
@@ -308,10 +286,7 @@ export class ShopifyPages {
         const filePath = this.getPageFilePath(outputPath, page);
 
         // Ensure the directory for this file exists
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
+        IOUtility.ensureDirectoryExists(path.dirname(filePath));
 
         // Save page HTML as-is from Shopify
         fs.writeFileSync(filePath, page.body_html || '', 'utf8');
@@ -331,25 +306,7 @@ export class ShopifyPages {
         fs.writeFileSync(metaPath, yaml.dump(metadata), 'utf8');
     }
 
-    private resolvePagesPath(basePath: string): string {
-        const pagesPath = IOUtility.buildResourcePath(basePath, 'pages');
 
-        if (!fs.existsSync(pagesPath)) {
-            throw new Error(
-                `Pages directory not found: ${pagesPath}\n` +
-                `Expected structure: ${basePath}/pages/`
-            );
-        }
-
-        const entries = fs.readdirSync(pagesPath);
-        const hasHtmlFiles = entries.some(entry => entry.endsWith(ShopifyPages.HTML_EXTENSION));
-
-        if (!hasHtmlFiles) {
-            throw new Error(`No HTML files found in directory: ${pagesPath}`);
-        }
-
-        return pagesPath;
-    }
 
     private collectLocalPageFiles(inputPath: string): Array<{ handle: string, filePath: string, pageId?: number }> {
         const files: Array<{ handle: string, filePath: string, pageId?: number }> = [];

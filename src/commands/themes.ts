@@ -170,7 +170,7 @@ export class ShopifyThemes {
             }
         }
 
-        const themeFolder = this.resolveThemePath(inputPath, theme.name);
+        const themeFolder = IOUtility.prepareResourcePath(inputPath, 'themes', theme.name);
         dryRunManager.logAction('push', `local theme files from "${themeFolder}" to theme "${theme.name}" (ID: ${theme.id})`);
 
         const localFiles = this.collectLocalThemeFiles(themeFolder);
@@ -248,25 +248,7 @@ export class ShopifyThemes {
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private resolveThemePath(basePath: string, themeName: string): string {
-        const themePath = IOUtility.buildResourcePath(basePath, 'themes', themeName);
 
-        if (!fs.existsSync(themePath)) {
-            throw new Error(
-                `Theme directory not found: ${themePath}\n` +
-                `Expected structure: ${basePath}/themes/${themeName}/`
-            );
-        }
-
-        if (!this.isValidThemeStructure(themePath)) {
-            throw new Error(
-                `Invalid theme structure in: ${themePath}\n` +
-                `Expected Shopify theme directories: assets, config, layout, locales, sections, snippets, templates`
-            );
-        }
-
-        return themePath;
-    }
 
     private async fetchThemeAssets(site: string, accessToken: string, themeId: number): Promise<Asset[]> {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEME_ASSETS(themeId)}`;
@@ -301,7 +283,7 @@ export class ShopifyThemes {
         // Ensure all necessary directories exist
         const directories = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
         directories.forEach(dir => {
-            fs.mkdirSync(path.join(outputPath, dir), { recursive: true });
+            IOUtility.ensureDirectoryExists(path.join(outputPath, dir));
         });
 
         for (let i = 0; i < assets.length; i++) {
@@ -316,7 +298,7 @@ export class ShopifyThemes {
                 const filePath = path.join(outputPath, asset.key);
 
                 // Ensure the directory for this file exists
-                fs.mkdirSync(path.dirname(filePath), { recursive: true });
+                IOUtility.ensureDirectoryExists(path.dirname(filePath));
 
                 if (asset.attachment) {
                     // Binary file - decode from base64
@@ -483,30 +465,20 @@ export class ShopifyThemes {
     }
 
     private deleteLocalFiles(outputPath: string, filesToDelete: string[]): void {
+        IOUtility.deleteLocalFiles(outputPath, filesToDelete, (file, error) => {
+            Logger.warn(`Failed to delete local file ${file}: ${error}`);
+        });
+
         filesToDelete.forEach(file => {
-            const filePath = path.join(outputPath, file);
-            try {
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                    Logger.info(`Deleted local file: ${file}`);
-                }
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Logger.warn(`Failed to delete local file ${file}: ${message}`);
-            }
+            Logger.info(`Deleted local file: ${file}`);
         });
     }
 
     private findLocalFilesToDelete(outputPath: string, remoteAssetKeys: Set<string>): string[] {
-        const localFilesToDelete: string[] = [];
-
-        IOUtility.walkDirectory(outputPath, (filePath, relativePath) => {
-            if (!remoteAssetKeys.has(relativePath)) {
-                localFilesToDelete.push(relativePath);
-            }
+        return IOUtility.findFilesToDelete(outputPath, remoteAssetKeys, {
+            recursive: true,
+            includeMetaFiles: false
         });
-
-        return localFilesToDelete;
     }
 }
 

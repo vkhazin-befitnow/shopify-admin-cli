@@ -6,6 +6,7 @@ import { themesPullCommand, themesPushCommand } from './commands/themes';
 import { filesPullCommand, filesPushCommand } from './commands/files';
 import { pagesPullCommand, pagesPushCommand } from './commands/pages';
 import { menusPullCommand, menusPushCommand } from './commands/menus';
+
 import { CLI_VERSION } from './settings';
 import { Logger } from './utils/logger';
 
@@ -186,6 +187,8 @@ menusCommand
     await menusPushCommand(options);
   });
 
+
+
 program
   .command('pull')
   .description('Pull all or specified components from Shopify store')
@@ -198,7 +201,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -275,7 +278,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -329,6 +332,9 @@ program
             site: options.site,
             accessToken: options.accessToken
           });
+        } else if (component === 'metaobjects') {
+          Logger.warn('Note: Metaobjects push requires --type parameter when used individually');
+          Logger.warn('Skipping metaobjects in batch push. Use: shopify-admin metaobjects push --type=<type>');
         }
         Logger.success(`${component} push completed`);
       } catch (error) {
