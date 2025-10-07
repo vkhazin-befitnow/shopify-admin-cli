@@ -12,7 +12,7 @@ import { getCredentialsFromEnv } from '../src/utils/auth';
 
 describe('Component Orchestration', () => {
     test('should validate component names', () => {
-        const validComponents = ['theme', 'pages'];
+        const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects'];
         const testComponents = 'theme,pages,invalid';
         const components = testComponents.split(',').map(c => c.trim().toLowerCase());
         const invalid = components.filter(c => !validComponents.includes(c));

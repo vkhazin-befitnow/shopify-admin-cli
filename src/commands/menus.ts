@@ -150,10 +150,6 @@ export class ShopifyMenus {
             }
         }
 
-        if (localFiles.length === 0 && !mirror) {
-            throw new Error(`No local menu files found to upload. Use --mirror flag if you want to delete all remote menus.`);
-        }
-
         Logger.info(`Found ${localFiles.length} local menus to upload`);
 
         dryRunManager.logSummary({

@@ -6,6 +6,7 @@ import { themesPullCommand, themesPushCommand } from './commands/themes';
 import { filesPullCommand, filesPushCommand } from './commands/files';
 import { pagesPullCommand, pagesPushCommand } from './commands/pages';
 import { menusPullCommand, menusPushCommand } from './commands/menus';
+import { metaobjectsPullCommand, metaobjectsPushCommand } from './commands/metaobjects';
 
 import { CLI_VERSION } from './settings';
 import { Logger } from './utils/logger';
@@ -187,13 +188,41 @@ menusCommand
     await menusPushCommand(options);
   });
 
+const metaobjectsCommand = program
+  .command('metaobjects')
+  .description('Metaobject management commands')
+  .addHelpCommand(false);
 
+metaobjectsCommand
+  .command('pull')
+  .description('Download metaobjects from Shopify store')
+  .requiredOption('--output <path>', 'Output directory path')
+  .option('--max-metaobjects <number>', 'Maximum number of metaobjects to download (for testing)', parseInt)
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await metaobjectsPullCommand(options);
+  });
+
+metaobjectsCommand
+  .command('push')
+  .description('Upload local metaobjects to Shopify store')
+  .requiredOption('--input <path>', 'Input directory path containing metaobject files')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete remote metaobjects not present locally (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await metaobjectsPushCommand(options);
+  });
 
 program
   .command('pull')
   .description('Pull all or specified components from Shopify store')
   .requiredOption('--output <path>', 'Output directory path')
-  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus)', 'theme,files,pages,menus')
+  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects)', 'theme,files,pages,menus,metaobjects')
   .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
@@ -252,6 +281,14 @@ program
             site: options.site,
             accessToken: options.accessToken
           });
+        } else if (component === 'metaobjects') {
+          await metaobjectsPullCommand({
+            output: options.output,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
         }
         Logger.success(`${component} pull completed`);
       } catch (error) {
@@ -270,7 +307,7 @@ program
   .command('push')
   .description('Push all or specified components to Shopify store')
   .requiredOption('--input <path>', 'Input directory path')
-  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus)', 'theme,files,pages,menus')
+  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects)', 'theme,files,pages,menus,metaobjects')
   .option('--theme-name <name>', 'Theme name to upload to (required if pushing theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
@@ -296,15 +333,12 @@ program
 
       try {
         if (component === 'theme') {
-          if (!options.themeName) {
-            Logger.error('--theme-name is required when pushing theme component');
-            process.exit(1);
-          }
           await themesPushCommand({
-            themeName: options.themeName,
+            themeName: options.themeName || undefined,
             input: options.input,
             dryRun: options.dryRun || false,
             mirror: options.mirror || false,
+            published: !options.themeName,
             site: options.site,
             accessToken: options.accessToken
           });
@@ -333,8 +367,13 @@ program
             accessToken: options.accessToken
           });
         } else if (component === 'metaobjects') {
-          Logger.warn('Note: Metaobjects push requires --type parameter when used individually');
-          Logger.warn('Skipping metaobjects in batch push. Use: shopify-admin metaobjects push --type=<type>');
+          await metaobjectsPushCommand({
+            input: options.input,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
         }
         Logger.success(`${component} push completed`);
       } catch (error) {

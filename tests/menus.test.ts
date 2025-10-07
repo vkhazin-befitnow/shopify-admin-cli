@@ -135,6 +135,21 @@ describe('Shopify Menus', () => {
             }
         }
     });
+
+    test('Push with Empty Directory Should Succeed', async () => {
+        const creds = getCredentials();
+        assert.ok(creds, 'Credentials required');
+
+        const testPath = path.join(TEST_RUN_DIR, 'menus-empty-test');
+        cleanupTestDirectory(testPath);
+
+        const menusPath = path.join(testPath, 'menus');
+        fs.mkdirSync(menusPath, { recursive: true });
+
+        await menus.push(testPath, creds.site, creds.accessToken, false);
+
+        console.log('Push with empty directory completed successfully');
+    });
 });
 
 console.log('Running Menus Test Suite...\n');
