@@ -171,6 +171,35 @@ shopify-admin menus push --input ./menus --dry-run
 shopify-admin menus push --input ./menus
 ```
 
+### Product Management Workflow
+
+```bash
+# Pull products from store
+shopify-admin products pull --output ./products
+
+# Pull limited number for testing
+shopify-admin products pull --output ./products --max-products 10
+
+# Edit products locally (JSON format with .meta files)
+# ... edit JSON files ...
+
+# Preview changes
+shopify-admin products push --input ./products --dry-run
+
+# Deploy changes
+shopify-admin products push --input ./products
+
+# Mirror mode: sync exactly with local state
+shopify-admin products push --input ./products --mirror --dry-run
+shopify-admin products push --input ./products --mirror
+```
+
+Notes:
+- Each product stored as `.json` file with companion `.json.meta` file
+- Meta file contains id, handle, and other metadata
+- Products identified by handle
+- Includes variants, options, images, and all product data
+
 ### Metaobject Management Workflow
 
 ```bash
@@ -229,27 +258,27 @@ Pull or push multiple components in a single operation:
 shopify-admin pull --output ./backup
 
 # Or explicitly specify components
-shopify-admin pull --components=theme,pages,files,menus,metaobjects --output ./backup
+shopify-admin pull --components=theme,pages,files,menus,metaobjects,products --output ./backup
 
 # Pull specific components
-shopify-admin pull --components=pages,menus,metaobjects --output ./backup
+shopify-admin pull --components=pages,menus,products --output ./backup
 
 # Push all components (default behavior - no --components needed)
 shopify-admin push --input ./backup --mirror --dry-run
 shopify-admin push --input ./backup --mirror
 
 # Or explicitly specify components
-shopify-admin push --components=theme,pages,files,menus,metaobjects --input ./backup --mirror
+shopify-admin push --components=theme,pages,files,menus,metaobjects,products --input ./backup --mirror
 
 # Push specific components
-shopify-admin push --components=pages,files,metaobjects --input ./backup
+shopify-admin push --components=pages,files,products --input ./backup
 ```
 
 Features:
-- Default components: `theme,files,pages,menus,metaobjects` (pulls/pushes all when --components not specified)
-- Available components: `theme,files,pages,menus,metaobjects`
+- Default components: `theme,files,pages,menus,metaobjects,products` (pulls/pushes all when --components not specified)
+- Available components: `theme,files,pages,menus,metaobjects,products`
 - Orchestrates operations across all specified components
-- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`
+- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`, products in `output/products/`
 - Supports all standard options: `--dry-run`, `--mirror`, credentials
 - Processes components sequentially with clear progress output
 - Stops on first error for safety
@@ -264,7 +293,7 @@ export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
 export SHOPIFY_ACCESS_TOKEN="${SECRET_TOKEN}"
 
 # Multi-component deployment (recommended)
-shopify-admin push --components=theme,pages,files,metaobjects --input ./backup --mirror
+shopify-admin push --components=theme,pages,files,metaobjects,products --input ./backup --mirror
 
 # Or deploy individually:
 # Deploy themes to published theme
@@ -278,6 +307,9 @@ shopify-admin pages push --input ./pages --mirror
 
 # Deploy metaobjects
 shopify-admin metaobjects push --input ./metaobjects --mirror
+
+# Deploy products
+shopify-admin products push --input ./products --mirror
 ```
 
 ## Safety Guidelines

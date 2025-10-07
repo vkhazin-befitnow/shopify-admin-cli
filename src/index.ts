@@ -7,6 +7,7 @@ import { filesPullCommand, filesPushCommand } from './commands/files';
 import { pagesPullCommand, pagesPushCommand } from './commands/pages';
 import { menusPullCommand, menusPushCommand } from './commands/menus';
 import { metaobjectsPullCommand, metaobjectsPushCommand } from './commands/metaobjects';
+import { productsPullCommand, productsPushCommand } from './commands/products';
 
 import { CLI_VERSION } from './settings';
 import { Logger } from './utils/logger';
@@ -218,11 +219,41 @@ metaobjectsCommand
     await metaobjectsPushCommand(options);
   });
 
+const productsCommand = program
+  .command('products')
+  .description('Product management commands')
+  .addHelpCommand(false);
+
+productsCommand
+  .command('pull')
+  .description('Download products from Shopify store')
+  .requiredOption('--output <path>', 'Output directory path')
+  .option('--max-products <number>', 'Maximum number of products to download (for testing)', parseInt)
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await productsPullCommand(options);
+  });
+
+productsCommand
+  .command('push')
+  .description('Upload local products to Shopify store')
+  .requiredOption('--input <path>', 'Input directory path containing product files')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete remote products not present locally (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await productsPushCommand(options);
+  });
+
 program
   .command('pull')
   .description('Pull all or specified components from Shopify store')
   .requiredOption('--output <path>', 'Output directory path')
-  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects)', 'theme,files,pages,menus,metaobjects')
+  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products)', 'theme,files,pages,menus,metaobjects,products')
   .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
@@ -230,7 +261,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -289,6 +320,14 @@ program
             site: options.site,
             accessToken: options.accessToken
           });
+        } else if (component === 'products') {
+          await productsPullCommand({
+            output: options.output,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
         }
         Logger.success(`${component} pull completed`);
       } catch (error) {
@@ -307,7 +346,7 @@ program
   .command('push')
   .description('Push all or specified components to Shopify store')
   .requiredOption('--input <path>', 'Input directory path')
-  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects)', 'theme,files,pages,menus,metaobjects')
+  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products)', 'theme,files,pages,menus,metaobjects,products')
   .option('--theme-name <name>', 'Theme name to upload to (required if pushing theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
@@ -315,7 +354,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -368,6 +407,14 @@ program
           });
         } else if (component === 'metaobjects') {
           await metaobjectsPushCommand({
+            input: options.input,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
+        } else if (component === 'products') {
+          await productsPushCommand({
             input: options.input,
             dryRun: options.dryRun || false,
             mirror: options.mirror || false,

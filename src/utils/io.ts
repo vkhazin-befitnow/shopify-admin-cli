@@ -8,7 +8,7 @@ export class IOUtility {
      */
     static buildResourcePath(
         root: string,
-        resource: 'files' | 'pages' | 'menus' | 'metaobjects' | 'themes',
+        resource: 'files' | 'pages' | 'menus' | 'metaobjects' | 'products' | 'themes',
         themeName?: string
     ): string {
         return themeName
@@ -26,7 +26,7 @@ export class IOUtility {
      */
     static prepareResourcePath(
         basePath: string,
-        resource: 'files' | 'pages' | 'menus' | 'metaobjects' | 'themes',
+        resource: 'files' | 'pages' | 'menus' | 'metaobjects' | 'products' | 'themes',
         themeName?: string,
         createDirectory: boolean = true
     ): string {
