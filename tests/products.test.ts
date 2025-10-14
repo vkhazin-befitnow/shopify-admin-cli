@@ -50,7 +50,12 @@ describe('Shopify Products', () => {
         const testProductsPath = path.join(TEST_RUN_DIR, 'products-pull-test');
         cleanupTestDirectory(testProductsPath);
 
-        await products.pull(testProductsPath, creds.site, creds.accessToken, 3);
+        await products.pull({
+            output: testProductsPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 3
+        });
 
         const actualProductsPath = path.join(testProductsPath, 'products');
 
@@ -79,7 +84,13 @@ describe('Shopify Products', () => {
         const testProductsPath = path.join(TEST_RUN_DIR, 'products-pull-dry-run-test');
         cleanupTestDirectory(testProductsPath);
 
-        await products.pull(testProductsPath, creds.site, creds.accessToken, 2, true);
+        await products.pull({
+            output: testProductsPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 2,
+            dryRun: true
+        });
 
         assert.ok(!fs.existsSync(testProductsPath) || fs.readdirSync(testProductsPath).length === 0, 'Dry run should not create files');
 
@@ -98,7 +109,14 @@ describe('Shopify Products', () => {
         fs.mkdirSync(actualProductsPath, { recursive: true });
         fs.writeFileSync(path.join(actualProductsPath, 'local-only-product.json'), JSON.stringify({ title: 'Local Only' }, null, 2));
 
-        await products.pull(testProductsPath, creds.site, creds.accessToken, 2, false, true);
+        await products.pull({
+            output: testProductsPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 2,
+            dryRun: false,
+            mirror: true
+        });
 
         assert.ok(!fs.existsSync(path.join(actualProductsPath, 'local-only-product.json')), 'Local-only product should be deleted in mirror mode');
 
@@ -112,7 +130,12 @@ describe('Shopify Products', () => {
         const testProductsPath = path.join(TEST_RUN_DIR, 'products-update-test');
         cleanupTestDirectory(testProductsPath);
 
-        await products.pull(testProductsPath, creds.site, creds.accessToken, 1);
+        await products.pull({
+            output: testProductsPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 1
+        });
 
         const actualProductsPath = path.join(testProductsPath, 'products');
         const jsonFiles = fs.readdirSync(actualProductsPath).filter(file => file.endsWith('.json'));
@@ -123,8 +146,8 @@ describe('Shopify Products', () => {
         const testProductHandle = testProductFile.replace('.json', '');
         const testProductPath = path.join(actualProductsPath, testProductFile);
 
-        const remoteProductsBefore = await products['fetchProducts'](creds.site, creds.accessToken);
-        const productsWithHandleBefore = remoteProductsBefore.filter(p => p.handle === testProductHandle);
+        const remoteProductsBefore = await products.fetchResources(creds.site, creds.accessToken);
+        const productsWithHandleBefore = remoteProductsBefore.filter((p: any) => p.handle === testProductHandle);
         const initialCount = productsWithHandleBefore.length;
 
         console.log(`Initial: Found ${initialCount} product(s) with handle "${testProductHandle}"`);
@@ -134,10 +157,15 @@ describe('Shopify Products', () => {
         productData.body_html = (productData.body_html || '') + `\n<!-- Modified at ${new Date().toISOString()} -->`;
         fs.writeFileSync(testProductPath, JSON.stringify(productData, null, 2));
 
-        await products.push(testProductsPath, creds.site, creds.accessToken, false);
+        await products.push({
+            input: testProductsPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            dryRun: false
+        });
 
-        const remoteProductsAfter = await products['fetchProducts'](creds.site, creds.accessToken);
-        const productsWithHandleAfter = remoteProductsAfter.filter(p => p.handle === testProductHandle);
+        const remoteProductsAfter = await products.fetchResources(creds.site, creds.accessToken);
+        const productsWithHandleAfter = remoteProductsAfter.filter((p: any) => p.handle === testProductHandle);
         const finalCount = productsWithHandleAfter.length;
 
         console.log(`After push: Found ${finalCount} product(s) with handle "${testProductHandle}"`);
@@ -164,11 +192,21 @@ describe('Shopify Products', () => {
         const testProductsPath = path.join(TEST_RUN_DIR, 'products-push-dry-run-test');
         cleanupTestDirectory(testProductsPath);
 
-        await products.pull(testProductsPath, creds.site, creds.accessToken, 2);
+        await products.pull({
+            output: testProductsPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 2
+        });
 
         await assert.doesNotReject(
             async () => {
-                await products.push(testProductsPath, creds.site, creds.accessToken, true);
+                await products.push({
+                    input: testProductsPath,
+                    site: creds.site,
+                    accessToken: creds.accessToken,
+                    dryRun: true
+                });
             },
             'Dry run push should not throw errors'
         );

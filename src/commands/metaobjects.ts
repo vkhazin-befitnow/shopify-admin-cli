@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
+import { GraphQLClient } from '../utils/graphql-client';
 import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
@@ -262,8 +263,6 @@ export class ShopifyMetaobjects {
     }
 
     private async fetchMetaobjectDefinitions(site: string, accessToken: string): Promise<MetaobjectDefinition[]> {
-        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.GRAPHQL}`;
-
         const query = `
             query {
                 metaobjectDefinitions(first: 250) {
@@ -294,42 +293,18 @@ export class ShopifyMetaobjects {
             }
         `;
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ query })
-            });
+        const data = await GraphQLClient.query<{ metaobjectDefinitions: { nodes: MetaobjectDefinition[] } }>(
+            site,
+            accessToken,
+            query,
+            undefined,
+            'metaobjects'
+        );
 
-            if (response.status === 401) {
-                throw new Error(`Failed to fetch metaobject definitions: Unauthorized - invalid access token or store domain. Verify your credentials.`);
-            }
-
-            if (response.status === 403) {
-                throw new Error(`Failed to fetch metaobject definitions: Forbidden - missing required permissions. Ensure your app has read_metaobjects scope.`);
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch metaobject definitions: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
-            }
-
-            const result = await response.json();
-
-            if (result.errors) {
-                throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-            }
-
-            return result.data.metaobjectDefinitions.nodes;
-        }, SHOPIFY_API.RETRY_CONFIG);
+        return data.metaobjectDefinitions.nodes;
     }
 
     private async fetchMetaobjects(site: string, accessToken: string, type: string, maxCount?: number): Promise<Metaobject[]> {
-        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.GRAPHQL}`;
-
         const query = `
             query GetMetaobjects($type: String!, $first: Int) {
                 metaobjects(type: $type, first: $first) {
@@ -348,43 +323,15 @@ export class ShopifyMetaobjects {
             }
         `;
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    query,
-                    variables: {
-                        type,
-                        first: maxCount || 250
-                    }
-                })
-            });
+        const data = await GraphQLClient.query<{ metaobjects: { nodes: Metaobject[] } }>(
+            site,
+            accessToken,
+            query,
+            { type, first: maxCount || 250 },
+            'metaobjects'
+        );
 
-            if (response.status === 401) {
-                throw new Error(`Failed to fetch metaobjects for type "${type}": Unauthorized - invalid access token or store domain. Verify your credentials.`);
-            }
-
-            if (response.status === 403) {
-                throw new Error(`Failed to fetch metaobjects for type "${type}": Forbidden - missing required permissions. Ensure your app has read_metaobjects scope.`);
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch metaobjects for type "${type}": API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
-            }
-
-            const result = await response.json();
-
-            if (result.errors) {
-                throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-            }
-
-            return result.data.metaobjects.nodes;
-        }, SHOPIFY_API.RETRY_CONFIG);
+        return data.metaobjects.nodes;
     }
 
     private async saveDefinition(definition: MetaobjectDefinition, typeOutputPath: string): Promise<void> {
@@ -590,8 +537,6 @@ export class ShopifyMetaobjects {
             }
         }
 
-        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.GRAPHQL}`;
-
         const fields = Object.entries(content).map(([key, value]) => ({
             key,
             value: String(value)
@@ -623,31 +568,16 @@ export class ShopifyMetaobjects {
             }
         };
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ query: mutation, variables })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to upload metaobject: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
+        const data = await GraphQLClient.mutation<{
+            metaobjectUpsert: {
+                metaobject: { id: string; handle: string; displayName?: string };
+                userErrors: Array<{ field: string[]; message: string }>;
             }
+        }>(site, accessToken, mutation, variables, 'metaobjects');
 
-            const result = await response.json();
-
-            if (result.errors) {
-                throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-            }
-
-            if (result.data.metaobjectUpsert.userErrors && result.data.metaobjectUpsert.userErrors.length > 0) {
-                throw new Error(`User errors: ${JSON.stringify(result.data.metaobjectUpsert.userErrors)}`);
-            }
-        }, SHOPIFY_API.RETRY_CONFIG);
+        if (data.metaobjectUpsert.userErrors && data.metaobjectUpsert.userErrors.length > 0) {
+            throw new Error(`User errors: ${JSON.stringify(data.metaobjectUpsert.userErrors)}`);
+        }
     }
 
     private async deleteMetaobjects(site: string, accessToken: string, metaobjects: Metaobject[]): Promise<{ deleted: number, failed: number, errors: string[] }> {
@@ -675,8 +605,6 @@ export class ShopifyMetaobjects {
     }
 
     private async deleteSingleMetaobject(site: string, accessToken: string, metaobject: Metaobject): Promise<void> {
-        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.GRAPHQL}`;
-
         const mutation = `
             mutation DeleteMetaobject($id: ID!) {
                 metaobjectDelete(id: $id) {
@@ -689,31 +617,16 @@ export class ShopifyMetaobjects {
             }
         `;
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ query: mutation, variables: { id: metaobject.id } })
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to delete metaobject: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
+        const data = await GraphQLClient.mutation<{
+            metaobjectDelete: {
+                deletedId?: string;
+                userErrors: Array<{ field: string[]; message: string }>;
             }
+        }>(site, accessToken, mutation, { id: metaobject.id }, 'metaobjects');
 
-            const result = await response.json();
-
-            if (result.errors) {
-                throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
-            }
-
-            if (result.data.metaobjectDelete.userErrors && result.data.metaobjectDelete.userErrors.length > 0) {
-                throw new Error(`User errors: ${JSON.stringify(result.data.metaobjectDelete.userErrors)}`);
-            }
-        }, SHOPIFY_API.RETRY_CONFIG);
+        if (data.metaobjectDelete.userErrors && data.metaobjectDelete.userErrors.length > 0) {
+            throw new Error(`User errors: ${JSON.stringify(data.metaobjectDelete.userErrors)}`);
+        }
     }
 }
 

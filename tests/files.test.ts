@@ -28,14 +28,7 @@ describe('ShopifyFiles', () => {
         }
     });
 
-    test('should prepare output directory', () => {
-        const result = (files as any).prepareOutputDirectory(testOutputPath);
-
-        assert.strictEqual(result, path.join(testOutputPath, 'files'));
-        assert.ok(fs.existsSync(result));
-    });
-
-    test('should extract filename from URL', () => {
+    test('should extract filename from URL using getResourceHandle', () => {
         const file = {
             id: 'gid://shopify/MediaImage/123',
             alt: 'test',
@@ -46,23 +39,9 @@ describe('ShopifyFiles', () => {
             }
         };
 
-        const fileName = (files as any).getFileName(file);
+        const fileName = files.getResourceHandle(file as any);
 
         assert.strictEqual(fileName, 'test-image.jpg');
-    });
-
-    test('should construct local file path', () => {
-        const file = {
-            id: 'gid://shopify/GenericFile/123',
-            alt: 'test',
-            createdAt: '2024-01-01',
-            fileStatus: 'READY',
-            url: 'https://cdn.shopify.com/files/test.jpg'
-        };
-
-        const localPath = (files as any).getFileLocalPath(testOutputPath, file);
-
-        assert.strictEqual(localPath, path.join(testOutputPath, 'test.jpg'));
     });
 
     test('should collect local files from directory', () => {
@@ -127,7 +106,7 @@ describe('ShopifyFiles', () => {
 
         assert.strictEqual(localFiles.length, 2);
         assert.ok(localFiles[0].metadata || localFiles[1].metadata);
-        const fileWithMeta = localFiles.find((f: any) => f.fileName === 'image1.jpg');
+        const fileWithMeta = localFiles.find((f: any) => f.handle === 'image1.jpg');
         assert.strictEqual(fileWithMeta?.metadata?.alt, 'Product hero image');
     });
 
@@ -175,7 +154,7 @@ describe('ShopifyFiles', () => {
         const localFiles = (files as any).collectLocalFiles(filesPath);
 
         assert.strictEqual(localFiles.length, 1);
-        assert.strictEqual(localFiles[0].fileName, 'image.jpg');
+        assert.strictEqual(localFiles[0].handle, 'image.jpg');
     });
 
     test('should skip .meta files in mirror mode deletion', () => {

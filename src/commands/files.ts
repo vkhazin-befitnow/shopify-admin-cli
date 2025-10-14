@@ -1,12 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as yaml from 'js-yaml';
+import { BaseResourceCommand } from './base/BaseResourceCommand';
+import { LocalFile } from './base/types';
+import { GraphQLClient } from '../utils/graphql-client';
 import { RetryUtility } from '../utils/retry';
-import { DryRunManager } from '../utils/dry-run';
 import { SHOPIFY_API } from '../settings';
 import { CredentialResolver } from '../utils/auth';
 import { IOUtility } from '../utils/io';
-import { Logger } from '../utils/logger';
 
 interface FileNode {
     id: string;
@@ -69,10 +69,6 @@ interface FilesPushOptions {
     mirror: boolean;
 }
 
-interface GraphQLVariables {
-    [key: string]: unknown;
-}
-
 interface UserError {
     field: string[];
     message: string;
@@ -126,114 +122,16 @@ interface FileDeleteResponse {
     };
 }
 
-export class ShopifyFiles {
-    constructor() { }
-
-    async pull(outputPath: string, site: string, accessToken: string, maxFiles?: number, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
-        const dryRunManager = new DryRunManager(dryRun);
-        dryRunManager.logDryRunHeader(`Pull files${mirror ? ' (Mirror Mode)' : ''}`);
-
-        const finalOutputPath = this.prepareOutputDirectory(outputPath);
-        dryRunManager.logAction('pull', `files to: ${finalOutputPath}`);
-
-        let files = await this.fetchFiles(site, accessToken, maxFiles);
-
-        Logger.info(`Found ${files.length} remote files to sync`);
-
-        const toDelete: string[] = [];
-
-        if (mirror) {
-            const remoteFileNames = new Set(files.map(file => this.getFileName(file)));
-            toDelete.push(...this.findLocalFilesToDelete(finalOutputPath, remoteFileNames));
-
-            if (toDelete.length > 0) {
-                Logger.info(`Mirror mode: ${toDelete.length} local files will be deleted`);
-            }
-        }
-
-        dryRunManager.logSummary({
-            itemsToSync: files.length,
-            itemsToDelete: mirror ? toDelete.length : undefined,
-            deleteList: toDelete,
-            itemType: 'Files'
-        });
-
-        if (!dryRunManager.shouldExecute()) {
-            return;
-        }
-
-        if (mirror && toDelete.length > 0) {
-            this.deleteLocalFiles(finalOutputPath, toDelete);
-        }
-
-        if (files.length > 0) {
-            await this.downloadFiles(files, finalOutputPath);
-        } else {
-            Logger.info('No files to sync');
-        }
-
-        Logger.success(`Successfully pulled files to ${finalOutputPath}`);
+export class ShopifyFiles extends BaseResourceCommand<FileNode, FileMetadata> {
+    getResourceName(): string {
+        return 'files';
     }
 
-    async push(inputPath: string, site: string, accessToken: string, dryRun: boolean = false, mirror: boolean = false): Promise<void> {
-        const dryRunManager = new DryRunManager(dryRun);
-        dryRunManager.logDryRunHeader(`Push files${mirror ? ' (Mirror Mode)' : ''}`);
-
-        const filesPath = IOUtility.prepareResourcePath(inputPath, 'files');
-        dryRunManager.logAction('push', `local files from "${filesPath}"`);
-
-        const localFiles = this.collectLocalFiles(filesPath);
-
-        const remoteFiles = await this.fetchFiles(site, accessToken);
-
-        const toDelete: Array<{ fileName: string, file: FileNode }> = [];
-
-        if (mirror) {
-            const localFileMap = new Map<string, { fileName: string, filePath: string }>();
-            localFiles.forEach(file => localFileMap.set(file.fileName, file));
-
-            const remoteFileMap = new Map<string, FileNode>();
-            remoteFiles.forEach(file => remoteFileMap.set(this.getFileName(file), file));
-
-            remoteFiles.forEach(remoteFile => {
-                const fileName = this.getFileName(remoteFile);
-                if (!localFileMap.has(fileName)) {
-                    toDelete.push({ fileName, file: remoteFile });
-                }
-            });
-
-            if (toDelete.length > 0) {
-                Logger.info(`Mirror mode: ${toDelete.length} remote files will be deleted`);
-            }
-        }
-
-        Logger.info(`Found ${localFiles.length} local files to upload`);
-
-        dryRunManager.logSummary({
-            itemsToUpload: localFiles.length,
-            itemsToDelete: mirror ? toDelete.length : undefined,
-            deleteList: toDelete.map(item => item.fileName),
-            itemType: 'Files'
-        });
-
-        if (!dryRunManager.shouldExecute()) {
-            return;
-        }
-
-        if (localFiles.length > 0) {
-            await this.uploadFiles(site, accessToken, localFiles);
-        } else {
-            Logger.info('No files to upload');
-        }
-
-        if (mirror && toDelete.length > 0) {
-            await this.deleteFiles(site, accessToken, toDelete.map(item => item.file));
-        }
-
-        Logger.success('Successfully pushed files');
+    getFileExtension(): string {
+        return ''; // Files don't have a specific extension
     }
 
-    private async fetchFiles(site: string, accessToken: string, maxFiles?: number): Promise<FileNode[]> {
+    async fetchResources(site: string, accessToken: string): Promise<FileNode[]> {
         const query = `
             query($first: Int!, $after: String) {
                 files(first: $first, after: $after) {
@@ -277,69 +175,28 @@ export class ShopifyFiles {
         const allFiles: FileNode[] = [];
         let hasNextPage = true;
         let after: string | null = null;
-        const perPage = maxFiles && maxFiles < 250 ? maxFiles : 250;
+        const perPage = 250;
 
-        while (hasNextPage && (!maxFiles || allFiles.length < maxFiles)) {
-            const response: FilesQueryResponse = await this.graphqlRequest<FilesQueryResponse>(site, accessToken, query, {
-                first: perPage,
-                after
-            });
-
-            if (response.errors) {
-                throw new Error(`Failed to fetch files list via GraphQL: ${response.errors.map((e: any) => e.message).join(', ')}`);
-            }
+        while (hasNextPage) {
+            const response: { data: FilesQueryResponse['data'] } = await GraphQLClient.request<FilesQueryResponse['data']>(
+                site,
+                accessToken,
+                query,
+                { first: perPage, after },
+                'files'
+            );
 
             const edges = response.data.files.edges;
             allFiles.push(...edges.map((edge: { node: FileNode }) => edge.node));
 
             hasNextPage = response.data.files.pageInfo.hasNextPage;
             after = response.data.files.pageInfo.endCursor || null;
-
-            if (maxFiles && allFiles.length >= maxFiles) {
-                break;
-            }
         }
 
-        return maxFiles ? allFiles.slice(0, maxFiles) : allFiles;
+        return allFiles;
     }
 
-    private async graphqlRequest<T>(site: string, accessToken: string, query: string, variables?: GraphQLVariables): Promise<T> {
-        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.GRAPHQL}`;
-
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ query, variables })
-            });
-
-            if (response.status === 401) {
-                throw new Error(`Failed to fetch files list via GraphQL: Unauthorized - invalid access token or store domain. Verify your credentials.`);
-            }
-
-            if (response.status === 403) {
-                throw new Error(`Failed to fetch files list via GraphQL: Forbidden - missing required permissions. Ensure your app has read_files scope.`);
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch files list via GraphQL: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
-            }
-
-            return await response.json();
-        }, SHOPIFY_API.RETRY_CONFIG);
-    }
-
-    private prepareOutputDirectory(outputPath: string): string {
-        const filesPath = IOUtility.buildResourcePath(outputPath, 'files');
-        IOUtility.ensureDirectoryExists(filesPath);
-        return filesPath;
-    }
-
-    private getFileName(file: FileNode): string {
+    getResourceHandle(file: FileNode): string {
         let url = '';
 
         if ('image' in file && file.image?.url) {
@@ -361,43 +218,17 @@ export class ShopifyFiles {
         return fileName || `file-${file.id}`;
     }
 
-    private getFileLocalPath(outputPath: string, file: FileNode): string {
-        return path.join(outputPath, this.getFileName(file));
+    extractMetadata(file: FileNode): FileMetadata {
+        return {
+            id: file.id,
+            alt: file.alt,
+            createdAt: file.createdAt,
+            fileStatus: file.fileStatus,
+            contentType: this.determineContentType(file)
+        };
     }
 
-    private findLocalFilesToDelete(outputPath: string, remoteFileNames: Set<string>): string[] {
-        return IOUtility.findFilesToDelete(outputPath, remoteFileNames);
-    }
-
-    private deleteLocalFiles(outputPath: string, filesToDelete: string[]): void {
-        IOUtility.deleteLocalFiles(outputPath, filesToDelete, (file, error) => {
-            Logger.warn(`Failed to delete ${file}: ${error}`);
-        });
-
-        filesToDelete.forEach(file => {
-            Logger.info(`Deleted local file: ${file}`);
-        });
-    }
-
-    private async downloadFiles(files: FileNode[], outputPath: string): Promise<void> {
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            const fileName = this.getFileName(file);
-            Logger.progress(i + 1, files.length, `Downloading ${fileName}`);
-
-            try {
-                await RetryUtility.withRetry(
-                    () => this.downloadSingleFile(file, outputPath),
-                    SHOPIFY_API.RETRY_CONFIG
-                );
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Logger.warn(`Failed to download ${fileName}: ${message}`);
-            }
-        }
-    }
-
-    private async downloadSingleFile(file: FileNode, outputPath: string): Promise<void> {
+    async downloadSingleResource(file: FileNode, outputPath: string): Promise<void> {
         let fileUrl = '';
 
         if ('image' in file && file.image?.url) {
@@ -409,17 +240,17 @@ export class ShopifyFiles {
         }
 
         if (!fileUrl) {
-            const fileName = this.getFileName(file);
+            const fileName = this.getResourceHandle(file);
             throw new Error(`Failed to download file '${fileName}' (ID: ${file.id}): No download URL available. The file may still be processing or may have been deleted.`);
         }
 
-        const filePath = this.getFileLocalPath(outputPath, file);
+        const filePath = this.getResourceFilePath(outputPath, file);
 
         return await RetryUtility.withRetry(async () => {
             const response = await fetch(fileUrl);
 
             if (!response.ok) {
-                const fileName = this.getFileName(file);
+                const fileName = this.getResourceHandle(file);
                 throw new Error(`Failed to download file '${fileName}' (ID: ${file.id}): Download request failed (${response.status}): ${response.statusText}`);
             }
 
@@ -429,78 +260,15 @@ export class ShopifyFiles {
             IOUtility.ensureDirectoryExists(path.dirname(filePath));
 
             fs.writeFileSync(filePath, buffer);
-
-            const metadata: FileMetadata = {
-                id: file.id,
-                alt: file.alt,
-                createdAt: file.createdAt,
-                fileStatus: file.fileStatus,
-                contentType: this.determineContentType(file)
-            };
-            const metaPath = `${filePath}.meta`;
-            fs.writeFileSync(metaPath, yaml.dump(metadata), 'utf8');
         }, SHOPIFY_API.RETRY_CONFIG);
     }
 
-    private determineContentType(file: FileNode): 'IMAGE' | 'VIDEO' | 'FILE' {
-        if ('image' in file && file.image?.url) return 'IMAGE';
-        if ('sources' in file && file.sources) return 'VIDEO';
-        return 'FILE';
-    }
-
-
-
-    private collectLocalFiles(inputPath: string): Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> {
-        const files: Array<{ fileName: string, filePath: string, metadata?: FileMetadata }> = [];
-
-        if (!fs.existsSync(inputPath)) {
-            return files;
-        }
-
-        const entries = fs.readdirSync(inputPath, { withFileTypes: true });
-
-        entries.forEach(entry => {
-            if (entry.isFile() && !entry.name.endsWith('.meta')) {
-                const filePath = path.join(inputPath, entry.name);
-                const metaPath = `${filePath}.meta`;
-
-                let metadata: FileMetadata | undefined;
-                if (fs.existsSync(metaPath)) {
-                    try {
-                        const metaContent = fs.readFileSync(metaPath, 'utf8');
-                        metadata = yaml.load(metaContent) as FileMetadata;
-                    } catch (error) {
-                        const message = error instanceof Error ? error.message : String(error);
-                        Logger.warn(`Failed to read metadata for ${entry.name}: ${message}`);
-                    }
-                }
-
-                files.push({ fileName: entry.name, filePath, metadata });
-            }
-        });
-
-        return files;
-    }
-
-    private async uploadFiles(site: string, accessToken: string, files: Array<{ fileName: string, filePath: string, fileId?: string, metadata?: FileMetadata }>): Promise<void> {
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            Logger.progress(i + 1, files.length, `Uploading ${file.fileName}`);
-
-            try {
-                await RetryUtility.withRetry(
-                    () => this.uploadSingleFile(site, accessToken, file),
-                    SHOPIFY_API.RETRY_CONFIG
-                );
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Logger.warn(`Failed to upload ${file.fileName}: ${message}`);
-            }
-        }
-    }
-
-    private async uploadSingleFile(site: string, accessToken: string, file: { fileName: string, filePath: string, fileId?: string, metadata?: FileMetadata }): Promise<void> {
-        const mutation = file.fileId ? `
+    async uploadSingleResource(
+        site: string,
+        accessToken: string,
+        file: LocalFile<FileMetadata>
+    ): Promise<void> {
+        const mutation = file.metadata?.id ? `
             mutation fileUpdate($files: [FileUpdateInput!]!) {
                 fileUpdate(files: $files) {
                     files {
@@ -530,25 +298,101 @@ export class ShopifyFiles {
             }
         `;
 
-        const stagedTarget = await this.stageFile(site, accessToken, file.filePath, file.fileName);
+        const stagedTarget = await this.stageFile(site, accessToken, file.filePath, file.handle);
 
         const variables = {
             files: [
                 {
-                    alt: file.metadata?.alt || file.fileName,
-                    contentType: this.getShopifyContentType(file.fileName),
+                    alt: file.metadata?.alt || file.handle,
+                    contentType: this.getShopifyContentType(file.handle),
                     originalSource: stagedTarget.resourceUrl
                 }
             ]
         };
 
-        const response = await this.graphqlRequest<FileCreateUpdateResponse>(site, accessToken, mutation, variables);
+        const data = await GraphQLClient.mutation<FileCreateUpdateResponse['data']>(
+            site,
+            accessToken,
+            mutation,
+            variables,
+            'files'
+        );
 
-        const result = file.fileId ? response.data.fileUpdate : response.data.fileCreate;
+        const result = file.metadata?.id ? data.fileUpdate : data.fileCreate;
 
         if (result && result.userErrors && result.userErrors.length > 0) {
-            throw new Error(`Failed to upload file '${file.fileName}'${file.fileId ? ' (update)' : ' (create)'}: ${result.userErrors.map(e => e.message).join(', ')}`);
+            throw new Error(`Failed to upload file '${file.handle}'${file.metadata?.id ? ' (update)' : ' (create)'}: ${result.userErrors.map(e => e.message).join(', ')}`);
         }
+    }
+
+    async deleteSingleResource(
+        site: string,
+        accessToken: string,
+        file: FileNode
+    ): Promise<void> {
+        const mutation = `
+            mutation fileDelete($fileIds: [ID!]!) {
+                fileDelete(fileIds: $fileIds) {
+                    deletedFileIds
+                    userErrors {
+                        field
+                        message
+                    }
+                }
+            }
+        `;
+
+        const variables = {
+            fileIds: [file.id]
+        };
+
+        const data = await GraphQLClient.mutation<FileDeleteResponse['data']>(
+            site,
+            accessToken,
+            mutation,
+            variables,
+            'files'
+        );
+
+        if (data.fileDelete.userErrors && data.fileDelete.userErrors.length > 0) {
+            const fileName = this.getResourceHandle(file);
+            throw new Error(`Failed to delete file '${fileName}' (ID: ${file.id}): ${data.fileDelete.userErrors.map((e: UserError) => e.message).join(', ')}`);
+        }
+    }
+
+    protected collectLocalFiles(inputPath: string): LocalFile<FileMetadata>[] {
+        const files: LocalFile<FileMetadata>[] = [];
+
+        if (!fs.existsSync(inputPath)) {
+            return files;
+        }
+
+        const entries = fs.readdirSync(inputPath, { withFileTypes: true });
+
+        entries.forEach(entry => {
+            if (entry.isFile() && !entry.name.endsWith('.meta')) {
+                const filePath = path.join(inputPath, entry.name);
+                const handle = entry.name;
+                const metadata = this.readMetadata(filePath);
+
+                files.push({ handle, filePath, metadata });
+            }
+        });
+
+        return files;
+    }
+
+    protected findLocalFilesToDelete(
+        outputPath: string,
+        remoteHandles: Set<string>
+    ): string[] {
+        return IOUtility.findFilesToDelete(outputPath, remoteHandles);
+    }
+
+    private determineContentType(file: FileNode): 'IMAGE' | 'VIDEO' | 'FILE' {
+        if ('image' in file && file.image?.url) return 'IMAGE';
+        if ('sources' in file && file.sources) return 'VIDEO';
+        return 'FILE';
     }
 
     private async stageFile(site: string, accessToken: string, filePath: string, fileName: string): Promise<{ resourceUrl: string }> {
@@ -584,13 +428,19 @@ export class ShopifyFiles {
             ]
         };
 
-        const response = await this.graphqlRequest<StagedUploadsCreateResponse>(site, accessToken, mutation, variables);
+        const data = await GraphQLClient.mutation<StagedUploadsCreateResponse['data']>(
+            site,
+            accessToken,
+            mutation,
+            variables,
+            'files'
+        );
 
-        if (response.data.stagedUploadsCreate.userErrors.length > 0) {
-            throw new Error(`Failed to create staging upload for file '${fileName}': ${response.data.stagedUploadsCreate.userErrors.map(e => e.message).join(', ')}`);
+        if (data.stagedUploadsCreate.userErrors.length > 0) {
+            throw new Error(`Failed to create staging upload for file '${fileName}': ${data.stagedUploadsCreate.userErrors.map(e => e.message).join(', ')}`);
         }
 
-        const stagedTarget = response.data.stagedUploadsCreate.stagedTargets[0];
+        const stagedTarget = data.stagedUploadsCreate.stagedTargets[0];
 
         const fileBuffer = fs.readFileSync(filePath);
         const formData = new FormData();
@@ -607,8 +457,7 @@ export class ShopifyFiles {
         });
 
         if (!uploadResponse.ok) {
-            throw new Error(`Failed to upload file '${fileName}' to staging area: Upload request failed (${uploadResponse.status}): ${uploadResponse.statusText}`)
-            ;
+            throw new Error(`Failed to upload file '${fileName}' to staging area: Upload request failed (${uploadResponse.status}): ${uploadResponse.statusText}`);
         }
 
         return { resourceUrl: stagedTarget.resourceUrl };
@@ -643,49 +492,6 @@ export class ShopifyFiles {
         if (videoExtensions.includes(ext)) return 'VIDEO';
         return 'FILE';
     }
-
-    private async deleteFiles(site: string, accessToken: string, files: FileNode[]): Promise<void> {
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            const fileName = this.getFileName(file);
-            Logger.progress(i + 1, files.length, `Deleting ${fileName}`);
-
-            try {
-                await RetryUtility.withRetry(
-                    () => this.deleteSingleFile(site, accessToken, file),
-                    SHOPIFY_API.RETRY_CONFIG
-                );
-            } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                Logger.warn(`Failed to delete ${fileName}: ${message}`);
-            }
-        }
-    }
-
-    private async deleteSingleFile(site: string, accessToken: string, file: FileNode): Promise<void> {
-        const mutation = `
-            mutation fileDelete($fileIds: [ID!]!) {
-                fileDelete(fileIds: $fileIds) {
-                    deletedFileIds
-                    userErrors {
-                        field
-                        message
-                    }
-                }
-            }
-        `;
-
-        const variables = {
-            fileIds: [file.id]
-        };
-
-        const response = await this.graphqlRequest<FileDeleteResponse>(site, accessToken, mutation, variables);
-
-        if (response.data.fileDelete.userErrors && response.data.fileDelete.userErrors.length > 0) {
-            const fileName = this.getFileName(file);
-            throw new Error(`Failed to delete file '${fileName}' (ID: ${file.id}): ${response.data.fileDelete.userErrors.map(e => e.message).join(', ')}`);
-        }
-    }
 }
 
 export async function filesPullCommand(options: FilesPullOptions): Promise<void> {
@@ -693,14 +499,14 @@ export async function filesPullCommand(options: FilesPullOptions): Promise<void>
     const credentials = CredentialResolver.resolve(options);
     CredentialResolver.validateRequiredOptions(options, ['output']);
 
-    await files.pull(
-        options.output,
-        credentials.site,
-        credentials.accessToken,
-        options.maxFiles,
-        options.dryRun,
-        options.mirror
-    );
+    await files.pull({
+        output: options.output,
+        site: credentials.site,
+        accessToken: credentials.accessToken,
+        maxItems: options.maxFiles,
+        dryRun: options.dryRun,
+        mirror: options.mirror
+    });
 }
 
 export async function filesPushCommand(options: FilesPushOptions): Promise<void> {
@@ -708,11 +514,11 @@ export async function filesPushCommand(options: FilesPushOptions): Promise<void>
     const credentials = CredentialResolver.resolve(options);
     CredentialResolver.validateRequiredOptions(options, ['input']);
 
-    await files.push(
-        options.input,
-        credentials.site,
-        credentials.accessToken,
-        options.dryRun,
-        options.mirror
-    );
+    await files.push({
+        input: options.input,
+        site: credentials.site,
+        accessToken: credentials.accessToken,
+        dryRun: options.dryRun,
+        mirror: options.mirror
+    });
 }

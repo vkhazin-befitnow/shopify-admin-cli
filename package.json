@@ -8,8 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "ts-node tests/run-all.ts",
-    "dev": "ts-node src/index.ts"
+    "test": "ts-node tests/run-all.ts"
   },
   "keywords": [
     "shopify",

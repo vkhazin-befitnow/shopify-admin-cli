@@ -53,7 +53,12 @@ describe('Shopify Pages', () => {
         cleanupTestDirectory(testPagesPath);
 
         // Step 1: Pull existing pages
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 1);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 1
+        });
 
         const actualPagesPath = path.join(testPagesPath, 'pages');
         const htmlFiles = fs.readdirSync(actualPagesPath).filter(file => file.endsWith('.html'));
@@ -65,8 +70,8 @@ describe('Shopify Pages', () => {
         const testPagePath = path.join(actualPagesPath, testPageFile);
 
         // Step 2: Get initial count of pages with this handle
-        const remotePagesBefore = await pages['fetchPages'](creds.site, creds.accessToken);
-        const pagesWithHandleBefore = remotePagesBefore.filter(p => p.handle === testPageHandle);
+        const remotePagesBefore = await pages.fetchResources(creds.site, creds.accessToken);
+        const pagesWithHandleBefore = remotePagesBefore.filter((p: any) => p.handle === testPageHandle);
         const initialCount = pagesWithHandleBefore.length;
 
         console.log(`Initial: Found ${initialCount} page(s) with handle "${testPageHandle}"`);
@@ -78,11 +83,16 @@ describe('Shopify Pages', () => {
         fs.writeFileSync(testPagePath, modifiedContent);
 
         // Step 4: Push the modified page (should UPDATE, not CREATE)
-        await pages.push(testPagesPath, creds.site, creds.accessToken, false);
+        await pages.push({
+            input: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            dryRun: false
+        });
 
         // Step 5: Verify no duplicate was created
-        const remotePagesAfter = await pages['fetchPages'](creds.site, creds.accessToken);
-        const pagesWithHandleAfter = remotePagesAfter.filter(p => p.handle === testPageHandle);
+        const remotePagesAfter = await pages.fetchResources(creds.site, creds.accessToken);
+        const pagesWithHandleAfter = remotePagesAfter.filter((p: any) => p.handle === testPageHandle);
         const finalCount = pagesWithHandleAfter.length;
 
         console.log(`After push: Found ${finalCount} page(s) with handle "${testPageHandle}"`);
@@ -111,7 +121,12 @@ describe('Shopify Pages', () => {
         cleanupTestDirectory(testPagesPath);
 
         // Pull pages with limit for testing
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 3);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 3
+        });
 
         // The pull method creates a 'pages' subfolder automatically
         const actualPagesPath = path.join(testPagesPath, 'pages');
@@ -144,7 +159,13 @@ describe('Shopify Pages', () => {
         cleanupTestDirectory(testPagesPath);
 
         // Test dry run pull (should not download files)
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 2, true);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 2,
+            dryRun: true
+        });
 
         // Verify no files were actually downloaded
         assert.ok(!fs.existsSync(testPagesPath) || fs.readdirSync(testPagesPath).length === 0, 'Dry run should not create files');
@@ -168,7 +189,14 @@ describe('Shopify Pages', () => {
         fs.writeFileSync(path.join(actualPagesPath, 'another-local-page.html'), '<!-- Another local page -->\n<h1>Another local page</h1>');
 
         // Pull with mirror mode - should delete local files not present remotely
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 2, false, true);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 2,
+            dryRun: false,
+            mirror: true
+        });
 
         // Verify local-only files were deleted
         assert.ok(!fs.existsSync(path.join(actualPagesPath, 'local-only-page.html')), 'Local-only page should be deleted in mirror mode');
@@ -216,12 +244,22 @@ describe('Shopify Pages', () => {
         cleanupTestDirectory(testPagesPath);
 
         // First pull to have test data
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 2);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 2
+        });
 
         // Push uses root path (expects root/pages/)
         await assert.doesNotReject(
             async () => {
-                await pages.push(testPagesPath, creds.site, creds.accessToken, true);
+                await pages.push({
+                    input: testPagesPath,
+                    site: creds.site,
+                    accessToken: creds.accessToken,
+                    dryRun: true
+                });
             },
             'Dry run push should not throw errors with root path'
         );
@@ -237,7 +275,12 @@ describe('Shopify Pages', () => {
         cleanupTestDirectory(testPagesPath);
 
         // First pull to ensure we have pages to work with
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 1);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 1
+        });
 
         // Create or modify a test page to ensure there's something to push
         const actualPagesPath = path.join(testPagesPath, 'pages');
@@ -259,14 +302,19 @@ Template: page
         // Perform real push using root path (expects root/pages/)
         await assert.doesNotReject(
             async () => {
-                await pages.push(testPagesPath, creds.site, creds.accessToken, false);
+                await pages.push({
+                    input: testPagesPath,
+                    site: creds.site,
+                    accessToken: creds.accessToken,
+                    dryRun: false
+                });
             },
             'Real push should not throw errors with root path'
         );
 
         // Verify the push worked by fetching pages and looking for our test page
-        const remotePages = await pages['fetchPages'](creds.site, creds.accessToken);
-        const testPage = remotePages.find(page => page.handle === 'test-push-verification');
+        const remotePages = await pages.fetchResources(creds.site, creds.accessToken);
+        const testPage = remotePages.find((page: any) => page.handle === 'test-push-verification');
 
         // Note: The test page might not be found if it was created (takes time to appear in API)
         // But the push operation itself should have succeeded without errors
@@ -286,7 +334,12 @@ Template: page
         cleanupTestDirectory(testPagesPath);
 
         // First pull to have test data
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 1);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 1
+        });
 
         // Test mirror mode dry run using root path
         let output = '';
@@ -294,7 +347,13 @@ Template: page
         console.log = (msg: any) => { output += msg + '\n'; };
 
         try {
-            await pages.push(testPagesPath, creds.site, creds.accessToken, true, true);
+            await pages.push({
+                input: testPagesPath,
+                site: creds.site,
+                accessToken: creds.accessToken,
+                dryRun: true,
+                mirror: true
+            });
         } finally {
             console.log = originalLog;
         }
@@ -354,7 +413,12 @@ Template: page
         cleanupTestDirectory(testPagesPath);
 
         // Pull some pages first
-        await pages.pull(testPagesPath, creds.site, creds.accessToken, 1);
+        await pages.pull({
+            output: testPagesPath,
+            site: creds.site,
+            accessToken: creds.accessToken,
+            maxItems: 1
+        });
 
         // The pull creates a 'pages' subfolder
         const actualPagesPath = path.join(testPagesPath, 'pages');
