@@ -23,7 +23,7 @@ export class RetryUtility {
         backoffMultiplier: 2,
         retryableStatusCodes: [408, 429, 500, 502, 503, 504],
         retryableErrors: ['ECONNRESET', 'ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT'],
-        rateLimitMs: 0
+        rateLimitMs: 400 // Match SHOPIFY_API.RETRY_CONFIG for consistency
     };
 
     /**

@@ -1,2 +1,0 @@
-- the user-guide.md should keep high level documentation, the cli --help will provide the detailed reference
-- the blueprint.md should describe the design decisions and rationale, not detailed usage

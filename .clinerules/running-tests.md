@@ -1,3 +1,0 @@
-- execution of tests requires sourcing env vars: `. ./.env/dev.sh
-- before running tests build using npm run build
-- when running tests prefer running test for specific tile instead of `npm test` to avoid long wait times

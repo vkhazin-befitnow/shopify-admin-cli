@@ -16,6 +16,8 @@ For setup instructions, usage examples, and troubleshooting, see the complete do
 
 ### Quick Start
 
+- Install [nodejs and npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm))
+- Run in terminal
 ```bash
 git clone https://github.com/vkhazin-befitnow/shopify-admin-cli.git
 cd shopify-admin-cli
