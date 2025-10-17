@@ -61,16 +61,8 @@ export class ShopifyPages extends BaseResourceCommand<Page, PageMetadata> {
     }
 
     async fetchResources(site: string, accessToken: string): Promise<Page[]> {
-        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.PAGES}`;
-
-        const response = await this.httpClient.request(url, 'GET', {
-            headers: { 'X-Shopify-Access-Token': accessToken },
-            resourceType: 'pages',
-            operationContext: 'fetch pages list'
-        });
-
-        const result: PageListResult = await response.json();
-        return result.pages;
+        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.PAGES}?limit=250`;
+        return this.fetchResourcesWithPagination<Page>(url, site, accessToken, 'pages');
     }
 
     getResourceHandle(page: Page): string {

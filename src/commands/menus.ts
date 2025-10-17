@@ -54,8 +54,8 @@ export class ShopifyMenus extends BaseResourceCommand<Menu, MenuMetadata> {
 
     async fetchResources(site: string, accessToken: string): Promise<Menu[]> {
         const query = `
-            query {
-                menus(first: 250) {
+            query($first: Int!, $after: String) {
+                menus(first: $first, after: $after) {
                     edges {
                         node {
                             id
@@ -69,18 +69,44 @@ export class ShopifyMenus extends BaseResourceCommand<Menu, MenuMetadata> {
                             }
                         }
                     }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
                 }
             }
         `;
 
-        const data = await GraphQLClient.query<{ menus: { edges: Array<{ node: Menu }> } }>(
-            site,
-            accessToken,
-            query,
-            undefined,
-            'menus'
-        );
-        return data.menus.edges.map(edge => edge.node);
+        const allMenus: Menu[] = [];
+        let hasNextPage = true;
+        let after: string | null = null;
+        const perPage = 250;
+
+        while (hasNextPage) {
+            const data: {
+                menus: {
+                    edges: Array<{ node: Menu }>;
+                    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+                }
+            } = await GraphQLClient.query<{
+                menus: {
+                    edges: Array<{ node: Menu }>;
+                    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+                }
+            }>(
+                site,
+                accessToken,
+                query,
+                { first: perPage, after },
+                'menus'
+            );
+
+            allMenus.push(...data.menus.edges.map((edge: { node: Menu }) => edge.node));
+            hasNextPage = data.menus.pageInfo.hasNextPage;
+            after = data.menus.pageInfo.endCursor;
+        }
+
+        return allMenus;
     }
 
     getResourceHandle(menu: Menu): string {

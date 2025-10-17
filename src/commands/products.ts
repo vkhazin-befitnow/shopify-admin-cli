@@ -107,16 +107,8 @@ export class ShopifyProducts extends BaseResourceCommand<Product, ProductMetadat
     }
 
     async fetchResources(site: string, accessToken: string): Promise<Product[]> {
-        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/products.json`;
-
-        const response = await this.httpClient.request(url, 'GET', {
-            headers: { 'X-Shopify-Access-Token': accessToken },
-            resourceType: 'products',
-            operationContext: 'fetch products list'
-        });
-
-        const result: ProductListResult = await response.json();
-        return result.products;
+        const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/products.json?limit=250`;
+        return this.fetchResourcesWithPagination<Product>(url, site, accessToken, 'products');
     }
 
     getResourceHandle(product: Product): string {

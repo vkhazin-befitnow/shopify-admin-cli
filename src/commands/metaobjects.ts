@@ -91,7 +91,7 @@ export class ShopifyMetaobjects {
 
         const definitions = await this.fetchMetaobjectDefinitions(site, accessToken);
         Logger.info(`Found ${definitions.length} metaobject type(s)`);
-        
+
         const metaobjectsByType = new Map<string, Metaobject[]>();
         let totalMetaobjects = 0;
 
@@ -133,14 +133,14 @@ export class ShopifyMetaobjects {
         }
 
         const downloadResult = { downloaded: 0, failed: 0, errors: [] as string[] };
-        
+
         for (const definition of definitions) {
             const metaobjects = metaobjectsByType.get(definition.type) || [];
             const typeOutputPath = path.join(finalOutputPath, definition.type);
             IOUtility.ensureDirectoryExists(typeOutputPath);
 
             await this.saveDefinition(definition, typeOutputPath);
-            
+
             if (metaobjects.length > 0) {
                 const result = await this.downloadMetaobjects(metaobjects, typeOutputPath);
                 downloadResult.downloaded += result.downloaded;
@@ -264,8 +264,8 @@ export class ShopifyMetaobjects {
 
     private async fetchMetaobjectDefinitions(site: string, accessToken: string): Promise<MetaobjectDefinition[]> {
         const query = `
-            query {
-                metaobjectDefinitions(first: 250) {
+            query($first: Int!, $after: String) {
+                metaobjectDefinitions(first: $first, after: $after) {
                     nodes {
                         type
                         name
@@ -289,25 +289,50 @@ export class ShopifyMetaobjects {
                             storefront
                         }
                     }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
                 }
             }
         `;
 
-        const data = await GraphQLClient.query<{ metaobjectDefinitions: { nodes: MetaobjectDefinition[] } }>(
-            site,
-            accessToken,
-            query,
-            undefined,
-            'metaobjects'
-        );
+        const allDefinitions: MetaobjectDefinition[] = [];
+        let hasNextPage = true;
+        let after: string | null = null;
+        const perPage = 250;
 
-        return data.metaobjectDefinitions.nodes;
+        while (hasNextPage) {
+            const data: {
+                metaobjectDefinitions: {
+                    nodes: MetaobjectDefinition[];
+                    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+                }
+            } = await GraphQLClient.query<{
+                metaobjectDefinitions: {
+                    nodes: MetaobjectDefinition[];
+                    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+                }
+            }>(
+                site,
+                accessToken,
+                query,
+                { first: perPage, after },
+                'metaobjects'
+            );
+
+            allDefinitions.push(...data.metaobjectDefinitions.nodes);
+            hasNextPage = data.metaobjectDefinitions.pageInfo.hasNextPage;
+            after = data.metaobjectDefinitions.pageInfo.endCursor;
+        }
+
+        return allDefinitions;
     }
 
     private async fetchMetaobjects(site: string, accessToken: string, type: string, maxCount?: number): Promise<Metaobject[]> {
         const query = `
-            query GetMetaobjects($type: String!, $first: Int) {
-                metaobjects(type: $type, first: $first) {
+            query GetMetaobjects($type: String!, $first: Int!, $after: String) {
+                metaobjects(type: $type, first: $first, after: $after) {
                     nodes {
                         id
                         handle
@@ -319,19 +344,48 @@ export class ShopifyMetaobjects {
                             value
                         }
                     }
+                    pageInfo {
+                        hasNextPage
+                        endCursor
+                    }
                 }
             }
         `;
 
-        const data = await GraphQLClient.query<{ metaobjects: { nodes: Metaobject[] } }>(
-            site,
-            accessToken,
-            query,
-            { type, first: maxCount || 250 },
-            'metaobjects'
-        );
+        const allMetaobjects: Metaobject[] = [];
+        let hasNextPage = true;
+        let after: string | null = null;
+        const perPage = maxCount || 250;
 
-        return data.metaobjects.nodes;
+        while (hasNextPage && (!maxCount || allMetaobjects.length < maxCount)) {
+            const data: {
+                metaobjects: {
+                    nodes: Metaobject[];
+                    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+                }
+            } = await GraphQLClient.query<{
+                metaobjects: {
+                    nodes: Metaobject[];
+                    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+                }
+            }>(
+                site,
+                accessToken,
+                query,
+                { type, first: perPage, after },
+                'metaobjects'
+            );
+
+            allMetaobjects.push(...data.metaobjects.nodes);
+            hasNextPage = data.metaobjects.pageInfo.hasNextPage;
+            after = data.metaobjects.pageInfo.endCursor;
+        }
+
+        if (maxCount && allMetaobjects.length > maxCount) {
+            return allMetaobjects.slice(0, maxCount);
+        }
+
+        return allMetaobjects;
     }
 
     private async saveDefinition(definition: MetaobjectDefinition, typeOutputPath: string): Promise<void> {
@@ -345,7 +399,7 @@ export class ShopifyMetaobjects {
 
     private findLocalFilesToDelete(outputPath: string, definitions: MetaobjectDefinition[], allMetaobjects: Metaobject[]): string[] {
         const toDelete: string[] = [];
-        
+
         if (!fs.existsSync(outputPath)) {
             return toDelete;
         }
@@ -460,10 +514,10 @@ export class ShopifyMetaobjects {
             const entries = fs.readdirSync(typePath, { withFileTypes: true });
 
             entries.forEach(entry => {
-                if (entry.isFile() && 
+                if (entry.isFile() &&
                     entry.name.endsWith(ShopifyMetaobjects.JSON_EXTENSION) &&
                     !entry.name.endsWith('.definition.json')) {
-                    
+
                     const handle = entry.name.replace(ShopifyMetaobjects.JSON_EXTENSION, '');
                     const filePath = path.join(typePath, entry.name);
                     const metaPath = `${filePath}${ShopifyMetaobjects.META_EXTENSION}`;

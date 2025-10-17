@@ -22,6 +22,43 @@ export abstract class BaseResourceCommand<TResource, TMetadata> {
     abstract uploadSingleResource(site: string, accessToken: string, file: LocalFile<TMetadata>): Promise<void>;
     abstract deleteSingleResource(site: string, accessToken: string, resource: TResource): Promise<void>;
 
+    protected async fetchResourcesWithPagination<T>(
+        initialUrl: string,
+        site: string,
+        accessToken: string,
+        resourceKey: string
+    ): Promise<T[]> {
+        let allResources: T[] = [];
+        let url = initialUrl;
+        let hasMore = true;
+
+        while (hasMore) {
+            const response = await this.httpClient.request(url, 'GET', {
+                headers: { 'X-Shopify-Access-Token': accessToken },
+                resourceType: this.getResourceName() as any,
+                operationContext: `fetch ${this.getResourceName()} list`
+            });
+
+            const result = await response.json();
+            const resources = result[resourceKey] as T[];
+            allResources = allResources.concat(resources);
+
+            const linkHeader = response.headers.get('Link');
+            if (linkHeader) {
+                const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+                if (nextMatch && nextMatch[1]) {
+                    url = nextMatch[1];
+                } else {
+                    hasMore = false;
+                }
+            } else {
+                hasMore = false;
+            }
+        }
+
+        return allResources;
+    }
+
     async pull(options: PullOptions): Promise<void> {
         const dryRunManager = new DryRunManager(options.dryRun || false);
         dryRunManager.logDryRunHeader(
