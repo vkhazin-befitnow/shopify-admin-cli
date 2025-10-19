@@ -4,13 +4,21 @@ Authentication tests with real API calls (no mocks).
 
 ## Setup
 
-Set environment variables as described in [root README.md](../README.md)
+Create `.env/dev.sh` in the project root with test store credentials:
+
+```bash
+export SHOPIFY_STORE_DOMAIN="your-dev-store.myshopify.com"
+export SHOPIFY_ACCESS_TOKEN="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export SHOPIFY_TEST_THEME_NAME="TestThemeName"
+```
+
+**Important**: Use a development/test store, not production.
 
 ## Running Tests
 
 ```bash
-npm run test:dev  # TypeScript mode (faster)
-npm run test      # Compiled mode
+source ./.env/dev.sh  # Load test environment
+npm run test          # Run all tests
 ```
 
 ## Test Coverage

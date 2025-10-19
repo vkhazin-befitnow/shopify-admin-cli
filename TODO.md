@@ -2,6 +2,24 @@
 
 ## Recent Updates
 
+### Collections Implementation (Oct 17, 2025)
+
+**Completed**: Full collections support added to CLI
+
+**Implementation Details**:
+- Extends `BaseResourceCommand` for consistent architecture
+- Supports both Custom Collections and Smart Collections
+- Uses REST API with pagination (fetches all collections)
+- Stores collection type in metadata for proper push routing
+- Smart collections preserve rules and disjunctive logic
+
+**Files Changed**:
+- `src/commands/collections.ts`: New collections command
+- `src/index.ts`: Added collections to pull/push commands
+- `tests/collections.test.ts`: Comprehensive test suite
+
+**Current Coverage**: 33 collections pulled successfully (custom + smart)
+
 ### Pagination Implementation (Oct 16, 2025)
 
 **Issue Resolved**: REST API endpoints were only returning first 50 items (default Shopify limit)

@@ -258,27 +258,27 @@ Pull or push multiple components in a single operation:
 shopify-admin pull --output ./backup
 
 # Or explicitly specify components
-shopify-admin pull --components=theme,pages,files,menus,metaobjects,products --output ./backup
+shopify-admin pull --components=theme,pages,files,menus,metaobjects,products,collections --output ./backup
 
 # Pull specific components
-shopify-admin pull --components=pages,menus,products --output ./backup
+shopify-admin pull --components=pages,menus,products,collections --output ./backup
 
 # Push all components (default behavior - no --components needed)
 shopify-admin push --input ./backup --mirror --dry-run
 shopify-admin push --input ./backup --mirror
 
 # Or explicitly specify components
-shopify-admin push --components=theme,pages,files,menus,metaobjects,products --input ./backup --mirror
+shopify-admin push --components=theme,pages,files,menus,metaobjects,products,collections --input ./backup --mirror
 
 # Push specific components
-shopify-admin push --components=pages,files,products --input ./backup
+shopify-admin push --components=pages,files,products,collections --input ./backup
 ```
 
 Features:
-- Default components: `theme,files,pages,menus,metaobjects,products` (pulls/pushes all when --components not specified)
-- Available components: `theme,files,pages,menus,metaobjects,products`
+- Default components: `theme,files,pages,menus,metaobjects,products,collections` (pulls/pushes all when --components not specified)
+- Available components: `theme,files,pages,menus,metaobjects,products,collections`
 - Orchestrates operations across all specified components
-- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`, products in `output/products/`
+- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`, products in `output/products/`, collections in `output/collections/`
 - Supports all standard options: `--dry-run`, `--mirror`, credentials
 - Processes components sequentially with clear progress output
 - Stops on first error for safety
@@ -293,7 +293,7 @@ export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
 export SHOPIFY_ACCESS_TOKEN="${SECRET_TOKEN}"
 
 # Multi-component deployment (recommended)
-shopify-admin push --components=theme,pages,files,metaobjects,products --input ./backup --mirror
+shopify-admin push --components=theme,pages,files,metaobjects,products,collections --input ./backup --mirror
 
 # Or deploy individually:
 # Deploy themes to published theme
