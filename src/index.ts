@@ -9,6 +9,7 @@ import { menusPullCommand, menusPushCommand } from './commands/menus';
 import { metaobjectsPullCommand, metaobjectsPushCommand } from './commands/metaobjects';
 import { productsPullCommand, productsPushCommand } from './commands/products';
 import { collectionsPullCommand, collectionsPushCommand } from './commands/collections';
+import { blogsPullCommand, blogsPushCommand } from './commands/blogs';
 
 import { CLI_VERSION } from './settings';
 import { Logger } from './utils/logger';
@@ -280,11 +281,41 @@ collectionsCommand
     await collectionsPushCommand(options);
   });
 
+const blogsCommand = program
+  .command('blogs')
+  .description('Blog and article management commands')
+  .addHelpCommand(false);
+
+blogsCommand
+  .command('pull')
+  .description('Download blogs and articles from Shopify store')
+  .requiredOption('--output <path>', 'Output directory path')
+  .option('--max-articles <number>', 'Maximum number of articles per blog to download (for testing)', parseInt)
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await blogsPullCommand(options);
+  });
+
+blogsCommand
+  .command('push')
+  .description('Upload local blog articles to Shopify store')
+  .requiredOption('--input <path>', 'Input directory path containing blog files')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete remote articles not present locally (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await blogsPushCommand(options);
+  });
+
 program
   .command('pull')
   .description('Pull all or specified components from Shopify store')
   .requiredOption('--output <path>', 'Output directory path')
-  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products,collections)', 'theme,files,pages,menus,metaobjects,products,collections')
+  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products,collections,blogs)', 'theme,files,pages,menus,metaobjects,products,collections,blogs')
   .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
@@ -292,7 +323,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -367,6 +398,14 @@ program
             site: options.site,
             accessToken: options.accessToken
           });
+        } else if (component === 'blogs') {
+          await blogsPullCommand({
+            output: options.output,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
         }
         Logger.success(`${component} pull completed`);
       } catch (error) {
@@ -385,7 +424,7 @@ program
   .command('push')
   .description('Push all or specified components to Shopify store')
   .requiredOption('--input <path>', 'Input directory path')
-  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products,collections)', 'theme,files,pages,menus,metaobjects,products,collections')
+  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products,collections,blogs)', 'theme,files,pages,menus,metaobjects,products,collections,blogs')
   .option('--theme-name <name>', 'Theme name to upload to (required if pushing theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
@@ -393,7 +432,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -462,6 +501,14 @@ program
           });
         } else if (component === 'collections') {
           await collectionsPushCommand({
+            input: options.input,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
+        } else if (component === 'blogs') {
+          await blogsPushCommand({
             input: options.input,
             dryRun: options.dryRun || false,
             mirror: options.mirror || false,

@@ -26,6 +26,10 @@ Configure these scopes in your private app:
 
 - `read_products`, `write_products`
 
+### Content Management
+
+- `read_online_store_blogs`, `write_online_store_blogs`
+
 ### Store Configuration
 
 - `read_online_store_navigation`, `write_online_store_navigation`
@@ -258,27 +262,27 @@ Pull or push multiple components in a single operation:
 shopify-admin pull --output ./backup
 
 # Or explicitly specify components
-shopify-admin pull --components=theme,pages,files,menus,metaobjects,products,collections --output ./backup
+shopify-admin pull --components=theme,pages,files,menus,metaobjects,products,collections,blogs --output ./backup
 
 # Pull specific components
-shopify-admin pull --components=pages,menus,products,collections --output ./backup
+shopify-admin pull --components=pages,menus,products,collections,blogs --output ./backup
 
 # Push all components (default behavior - no --components needed)
 shopify-admin push --input ./backup --mirror --dry-run
 shopify-admin push --input ./backup --mirror
 
 # Or explicitly specify components
-shopify-admin push --components=theme,pages,files,menus,metaobjects,products,collections --input ./backup --mirror
+shopify-admin push --components=theme,pages,files,menus,metaobjects,products,collections,blogs --input ./backup --mirror
 
 # Push specific components
-shopify-admin push --components=pages,files,products,collections --input ./backup
+shopify-admin push --components=pages,files,products,collections,blogs --input ./backup
 ```
 
 Features:
-- Default components: `theme,files,pages,menus,metaobjects,products,collections` (pulls/pushes all when --components not specified)
-- Available components: `theme,files,pages,menus,metaobjects,products,collections`
+- Default components: `theme,files,pages,menus,metaobjects,products,collections,blogs` (pulls/pushes all when --components not specified)
+- Available components: `theme,files,pages,menus,metaobjects,products,collections,blogs`
 - Orchestrates operations across all specified components
-- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`, products in `output/products/`, collections in `output/collections/`
+- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`, products in `output/products/`, collections in `output/collections/`, blogs in `output/blogs/`
 - Supports all standard options: `--dry-run`, `--mirror`, credentials
 - Processes components sequentially with clear progress output
 - Stops on first error for safety

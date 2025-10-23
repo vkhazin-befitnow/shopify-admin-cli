@@ -55,74 +55,31 @@
 - Rate Limiting: Consistent 400ms rate limiting across all API operations
 - Retry Logic: Sophisticated exponential backoff with jitter and validation error detection
 
-## Next Logical Step for Shopify Admin API Implementation
+## Current Implementation Coverage
 
-### Current State Analysis
+### Supported Resources (Oct 2025)
 
-- REST API Coverage: Themes, Pages, Products (full CRUD operations with pagination)
-- GraphQL API Coverage: Menus, Files, Metaobjects (leveraging GraphQL-only resources with pagination)
-- Architecture Maturity: BaseResourceCommand pattern proven and adopted by all REST resources
-- API Integration: Both REST and GraphQL clients are production-ready with comprehensive error handling and pagination
+- **Themes**: Full theme asset management with nested directory structure
+- **Files**: GraphQL-based file management (images, documents, media)
+- **Pages**: REST API pages with full CRUD operations
+- **Menus**: GraphQL-based navigation menu management
+- **Metaobjects**: Complex two-level hierarchy (definitions + instances)
+- **Products**: Full product catalog with pagination (349 items)
+- **Collections**: Custom and Smart collections (33 items)
 
-### Recommended Next Implementation Step: Collections
+### Architecture Patterns
 
-**Rationale**: Products (349 items) are now fully supported, but collections are missing - the critical organizational layer for product catalog management.
+1. **BaseResourceCommand**: Flat REST resources (pages, products, collections)
+2. **Standalone Classes**: Hierarchical/complex resources (themes, metaobjects, blogs)
+3. **GraphQL Resources**: Leveraging GraphQL-only endpoints (files, menus)
 
-**What Collections Provide**:
-- Product organization and categorization
-- Store navigation structure
-- Marketing and merchandising capabilities
-- Essential for complete store backup/restore
+### Next Implementation Priority
 
-**Implementation Approach**:
-1. Create `src/commands/collections.ts` extending `BaseResourceCommand`
-2. Use REST API endpoints (custom_collections.json, smart_collections.json)
-3. Leverage existing pagination infrastructure in base class
-4. Support both Custom Collections (manual) and Smart Collections (rule-based)
-5. Store collection rules/conditions for smart collections
-6. Handle product associations (collect_ids)
-
-**API Endpoints**:
-- GET /admin/api/2023-10/custom_collections.json
-- GET /admin/api/2023-10/smart_collections.json
-- GET /admin/api/2023-10/collects.json (product-collection associations)
-
-**Estimated Effort**: 4-6 hours (similar to products implementation)
-
-### Alternative: API Service Layer
-
-The next logical evolution is to create a **unified API service layer** that abstracts away REST vs GraphQL decisions:
-
-```typescript
-// src/services/ShopifyAPIService.ts
-export class ShopifyAPIService {
-    // Auto-route to REST or GraphQL based on resource capabilities
-    async fetchResource(resourceType: 'products' | 'pages' | 'themes'): Promise<T[]> 
-    async fetchResourceGraphQL(resourceType: 'menus' | 'files' | 'metaobjects'): Promise<T[]>
-    
-    // Unified batch operations with automatic API selection
-    async batchOperation(operations: APIOperation[]): Promise<BatchResult>
-    
-    // Smart pagination handling (REST vs GraphQL cursor-based)
-    async fetchAllPages<T>(fetchFunction: PaginationFunction<T>): Promise<T[]>
-}
-```
-
-### Benefits of API Service Layer
-
-- Resource Migration: Easy to move resources between REST/GraphQL as APIs evolve
-- Performance Optimization: Batch operations and intelligent caching
-- API Abstraction: Commands focus on business logic, not API specifics
-- Future-Proofing: Single place to adapt to Shopify API changes
-- Testing: Easier to mock and test API interactions
-
-### Implementation Rationale
-
-1. Proven Foundation: BaseResourceCommand pattern shows the architecture works
-2. API Maturity: Both REST and GraphQL clients are robust and tested
-3. Natural Evolution: Commands are currently duplicating API routing logic
-4. Shopify Direction: Shopify is gradually moving resources to GraphQL
-5. Scalability: Service layer enables advanced features like caching, batching, and intelligent retries
+**Blog Articles** - Complete content management capability alongside pages
+- Two-level hierarchy: blogs → articles
+- REST API endpoints available
+- Follows metaobjects pattern (standalone class)
+- High business value for content marketing
 
 ## High Priority - Functionality & Consistency
 
