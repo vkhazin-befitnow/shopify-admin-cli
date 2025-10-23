@@ -18,6 +18,8 @@ export const SHOPIFY_API = {
       `themes/${themeId}/assets.json?asset[key]=${encodeURIComponent(assetKey)}`,
     PAGES: 'pages.json',
     PAGE_BY_ID: (pageId: number) => `pages/${pageId}.json`,
+    REDIRECTS: 'redirects.json',
+    REDIRECT_BY_ID: (redirectId: number) => `redirects/${redirectId}.json`,
     GRAPHQL: 'graphql.json'
   },
   RETRY_CONFIG: {

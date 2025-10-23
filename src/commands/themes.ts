@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { RetryUtility } from '../utils/retry';
 import { DryRunManager } from '../utils/dry-run';
 import { HttpClient } from '../utils/http-client';
 import { SHOPIFY_API } from '../settings';
@@ -223,29 +222,15 @@ export class ShopifyThemes {
     private async fetchThemes(site: string, accessToken: string): Promise<ThemeListResult> {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEMES}`;
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                }
-            });
+        const response = await this.httpClient.request(url, 'GET', {
+            headers: {
+                'X-Shopify-Access-Token': accessToken
+            },
+            resourceType: 'themes',
+            operationContext: 'fetch themes list'
+        });
 
-            if (response.status === 401) {
-                throw new Error(`Failed to fetch themes list: Unauthorized - invalid access token or store domain. Verify your credentials.`);
-            }
-
-            if (response.status === 403) {
-                throw new Error(`Failed to fetch themes list: Forbidden - missing required permissions. Ensure your app has read_themes scope.`);
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch themes list: API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
-            }
-
-            return await response.json();
-        }, SHOPIFY_API.RETRY_CONFIG);
+        return await response.json();
     }
 
 
@@ -253,30 +238,16 @@ export class ShopifyThemes {
     private async fetchThemeAssets(site: string, accessToken: string, themeId: number): Promise<Asset[]> {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEME_ASSETS(themeId)}`;
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                }
-            });
+        const response = await this.httpClient.request(url, 'GET', {
+            headers: {
+                'X-Shopify-Access-Token': accessToken
+            },
+            resourceType: 'themes',
+            operationContext: `fetch assets for theme (ID: ${themeId})`
+        });
 
-            if (response.status === 401) {
-                throw new Error(`Failed to fetch assets for theme (ID: ${themeId}): Unauthorized - invalid access token or store domain. Verify your credentials.`);
-            }
-
-            if (response.status === 403) {
-                throw new Error(`Failed to fetch assets for theme (ID: ${themeId}): Forbidden - missing required permissions. Ensure your app has read_themes scope.`);
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to fetch assets for theme (ID: ${themeId}): API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
-            }
-
-            const result: AssetListResult = await response.json();
-            return result.assets;
-        }, SHOPIFY_API.RETRY_CONFIG);
+        const result: AssetListResult = await response.json();
+        return result.assets;
     }
 
     private async downloadAssets(site: string, accessToken: string, themeId: number, assets: Asset[], outputPath: string): Promise<void> {
@@ -291,10 +262,7 @@ export class ShopifyThemes {
             Logger.progress(i + 1, assets.length, `Downloading ${asset.key}`);
 
             try {
-                const content = await RetryUtility.withRetry(
-                    () => this.fetchAssetContent(site, accessToken, themeId, asset.key),
-                    SHOPIFY_API.RETRY_CONFIG
-                );
+                const content = await this.fetchAssetContent(site, accessToken, themeId, asset.key);
                 const filePath = path.join(outputPath, asset.key);
 
                 // Ensure the directory for this file exists
@@ -318,37 +286,28 @@ export class ShopifyThemes {
     private async fetchAssetContent(site: string, accessToken: string, themeId: number, assetKey: string): Promise<string> {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEME_ASSET(themeId, assetKey)}`;
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
+        try {
+            const response = await this.httpClient.request(url, 'GET', {
                 headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                }
+                    'X-Shopify-Access-Token': accessToken
+                },
+                resourceType: 'themes',
+                operationContext: `download theme asset '${assetKey}'`
             });
-
-            if (response.status === 401) {
-                throw new Error(`Failed to download theme asset '${assetKey}': Unauthorized - invalid access token or store domain. Verify your credentials.`);
-            }
-
-            if (response.status === 403) {
-                throw new Error(`Failed to download theme asset '${assetKey}': Forbidden - missing required permissions. Ensure your app has read_themes scope.`);
-            }
-
-            if (response.status === 404) {
-                throw new Error(`Failed to download theme asset '${assetKey}': Asset not found in theme (ID: ${themeId}). The asset may have been deleted.`);
-            }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to download theme asset '${assetKey}': API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
-            }
 
             const result = await response.json();
             const asset = result.asset;
 
             // Return the content (either attachment for binary or value for text)
             return asset.attachment || asset.value || '';
-        }, SHOPIFY_API.RETRY_CONFIG);
+        } catch (error) {
+            // Check if it's a 404 error and provide more context
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.includes('404')) {
+                throw new Error(`Failed to download theme asset '${assetKey}': Asset not found in theme (ID: ${themeId}). The asset may have been deleted.`);
+            }
+            throw error;
+        }
     }
 
     private isValidThemeStructure(themePath: string): boolean {
@@ -382,10 +341,7 @@ export class ShopifyThemes {
             Logger.progress(i + 1, files.length, `Uploading ${file.key}`);
 
             try {
-                await RetryUtility.withRetry(
-                    () => this.uploadSingleAsset(site, accessToken, themeId, file),
-                    SHOPIFY_API.RETRY_CONFIG
-                );
+                await this.uploadSingleAsset(site, accessToken, themeId, file);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to upload ${file.key}: ${message}`);
@@ -420,10 +376,7 @@ export class ShopifyThemes {
             Logger.progress(i + 1, assets.length, `Deleting ${asset.key}`);
 
             try {
-                await RetryUtility.withRetry(
-                    () => this.deleteSingleAsset(site, accessToken, themeId, asset),
-                    SHOPIFY_API.RETRY_CONFIG
-                );
+                await this.deleteSingleAsset(site, accessToken, themeId, asset);
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
                 Logger.warn(`Failed to delete ${asset.key}: ${message}`);
@@ -434,34 +387,22 @@ export class ShopifyThemes {
     private async deleteSingleAsset(site: string, accessToken: string, themeId: number, asset: Asset): Promise<void> {
         const url = `${SHOPIFY_API.BASE_URL(site)}/${SHOPIFY_API.VERSION}/${SHOPIFY_API.ENDPOINTS.THEME_ASSET(themeId, asset.key)}`;
 
-        return await RetryUtility.withRetry(async () => {
-            const response = await fetch(url, {
-                method: 'DELETE',
+        try {
+            await this.httpClient.request(url, 'DELETE', {
                 headers: {
-                    'X-Shopify-Access-Token': accessToken,
-                    'Content-Type': 'application/json'
-                }
+                    'X-Shopify-Access-Token': accessToken
+                },
+                resourceType: 'themes',
+                operationContext: `delete theme asset '${asset.key}'`
             });
-
-            if (response.status === 401) {
-                throw new Error(`Failed to delete theme asset '${asset.key}': Unauthorized - invalid access token or store domain. Verify your credentials.`);
-            }
-
-            if (response.status === 403) {
-                throw new Error(`Failed to delete theme asset '${asset.key}': Forbidden - missing required permissions. Ensure your app has write_themes scope.`);
-            }
-
-            if (response.status === 404) {
-                // Asset already doesn't exist - this is fine
+        } catch (error) {
+            // 404 is acceptable - asset already doesn't exist
+            const message = error instanceof Error ? error.message : String(error);
+            if (message.includes('404')) {
                 return;
             }
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Failed to delete theme asset '${asset.key}' from theme (ID: ${themeId}): API request failed (${response.status})${errorText ? ': ' + errorText : ''}`);
-            }
-
-        }, SHOPIFY_API.RETRY_CONFIG);
+            throw error;
+        }
     }
 
     private deleteLocalFiles(outputPath: string, filesToDelete: string[]): void {

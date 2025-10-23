@@ -37,6 +37,10 @@ Configure these scopes in your private app:
 - `read_script_tags`, `write_script_tags`
 - `read_locales`, `write_locales`
 
+### URL Management
+
+- `read_redirects`, `write_redirects`
+
 ### Advanced Features
 
 - `read_legal_policies`, `write_legal_policies`
@@ -95,162 +99,90 @@ shopify-admin themes pull --help
 
 ## Workflows
 
-### Theme Management Workflow
+### Common Command Pattern
+
+All resource commands follow the same pattern:
 
 ```bash
-# Pull published/main theme (creates backup/themes/[ThemeName]/)
+# Pull resources from Shopify
+shopify-admin <resource> pull --output ./path
+
+# Pull with limit for testing
+shopify-admin <resource> pull --output ./path --max-<resource> 10
+
+# Push with dry-run preview
+shopify-admin <resource> push --input ./path --dry-run
+
+# Push changes
+shopify-admin <resource> push --input ./path
+
+# Mirror mode: sync exactly (deletes remote items not in local)
+shopify-admin <resource> push --input ./path --mirror --dry-run
+shopify-admin <resource> push --input ./path --mirror
+```
+
+Replace `<resource>` with: `pages`, `products`, `collections`, `blogs`, `redirects`, `menus`, `metaobjects`, or `files`
+
+### Resource-Specific Examples
+
+#### Themes (Special Case)
+
+Themes require either `--name` or `--published` flag:
+
+```bash
+# Pull published theme
 shopify-admin themes pull --published --output ./backup
 
-# Or pull specific theme by name (creates backup/themes/Dawn/)
+# Pull specific theme by name
 shopify-admin themes pull --name "Dawn" --output ./backup
 
-# Make changes locally
-# ... edit files ...
-
-# Preview changes on test theme
-shopify-admin themes push --name "Test Theme" --input ./themes/test --dry-run
-shopify-admin themes push --name "Test Theme" --input ./themes/test
-
-# After testing, deploy to production
-shopify-admin themes push --name "Live Theme" --input ./themes/prod --mirror --dry-run
-shopify-admin themes push --name "Live Theme" --input ./themes/prod --mirror
-
-# Or push directly to published theme (auto-finds in backup/themes/[ThemeName]/)
+# Push to published theme (auto-finds theme)
 shopify-admin themes push --published --input ./backup --mirror --dry-run
 shopify-admin themes push --published --input ./backup --mirror
+
+# Push to specific theme
+shopify-admin themes push --name "Production" --input ./themes --mirror
 ```
 
-### Published Theme Shortcut
-
-The `--published` flag streamlines working with the main/published theme:
+#### Pages (HTML Files)
 
 ```bash
-# Pull published theme to backup/themes/[ThemeName]/
-shopify-admin themes pull --published --output ./backup
-
-# Push to published theme (automatically finds theme in multiple locations)
-shopify-admin themes push --published --input ./backup
-
-# Or specify direct path
-shopify-admin themes push --published --input ./backup/themes/Dawn
-```
-
-Benefits:
-- No need to know exact theme name
-- Automatically finds the published/main theme  
-- Smart path resolution for both pull and push
-- Consistent folder structure: output/themes/theme-name
-
-Note: Either `--name` or `--published` must be provided for theme commands.
-
-### Page Management Workflow
-
-```bash
-# Pull pages to version control
 shopify-admin pages pull --output ./pages
-
-# Edit pages locally
-# ... edit HTML files ...
-
-# Preview changes
+# Edit .html files
 shopify-admin pages push --input ./pages --dry-run
-
-# Deploy changes
 shopify-admin pages push --input ./pages
 ```
 
-### Menu Management Workflow
+#### Products, Collections, Blogs, Redirects, Metaobjects (JSON + Metadata)
 
 ```bash
-# Pull menus (navigation/link lists)
-shopify-admin menus pull --output ./menus
-
-# Edit menus locally (JSON format)
-# ... edit menu files ...
-
-# Preview changes
-shopify-admin menus push --input ./menus --dry-run
-
-# Deploy changes
-shopify-admin menus push --input ./menus
-```
-
-### Product Management Workflow
-
-```bash
-# Pull products from store
-shopify-admin products pull --output ./products
-
-# Pull limited number for testing
 shopify-admin products pull --output ./products --max-products 10
-
-# Edit products locally (JSON format with .meta files)
-# ... edit JSON files ...
-
-# Preview changes
+# Edit .json files and .json.meta files
 shopify-admin products push --input ./products --dry-run
-
-# Deploy changes
-shopify-admin products push --input ./products
-
-# Mirror mode: sync exactly with local state
-shopify-admin products push --input ./products --mirror --dry-run
 shopify-admin products push --input ./products --mirror
 ```
 
 Notes:
-- Each product stored as `.json` file with companion `.json.meta` file
-- Meta file contains id, handle, and other metadata
-- Products identified by handle
-- Includes variants, options, images, and all product data
+- Each resource stored as `.json` with companion `.json.meta` file
+- Meta files contain id, handle, and other metadata
+- Resources identified by handle
 
-### Metaobject Management Workflow
+#### Menus (GraphQL-based)
 
 ```bash
-# Pull all metaobjects (all types)
-shopify-admin metaobjects pull --output ./metaobjects
-
-# Pull limited number for testing
-shopify-admin metaobjects pull --output ./metaobjects --max-metaobjects 10
-
-# Edit metaobjects locally (JSON format with .meta files)
-# ... edit JSON files ...
-
-# Preview changes
-shopify-admin metaobjects push --input ./metaobjects --dry-run
-
-# Deploy changes
-shopify-admin metaobjects push --input ./metaobjects
-
-# Mirror mode: sync exactly with local state
-shopify-admin metaobjects push --input ./metaobjects --mirror --dry-run
-shopify-admin metaobjects push --input ./metaobjects --mirror
+shopify-admin menus pull --output ./menus
+# Edit .json files
+shopify-admin menus push --input ./menus --dry-run
+shopify-admin menus push --input ./menus
 ```
 
-Notes:
-- Pulls all metaobject types automatically
-- Each metaobject stored as `.json` file with companion `.json.meta` file
-- Meta file contains type, id, handle, and other metadata
-- Metaobjects identified by handle within their type
-
-### File Management Workflow
+#### Files (Media Library)
 
 ```bash
-# Pull files from store (images, videos, documents)
-shopify-admin files pull --output ./files
-
-# Pull limited number for testing
 shopify-admin files pull --output ./files --max-files 10
-
-# Preview changes
+# Add/edit media files
 shopify-admin files push --input ./files --dry-run
-
-# Upload files to store
 shopify-admin files push --input ./files
-
-# Mirror mode: sync exactly with local state
-shopify-admin files push --input ./files --mirror --dry-run
-shopify-admin files push --input ./files --mirror
 ```
 
 ### Multi-Component Operations
@@ -262,27 +194,27 @@ Pull or push multiple components in a single operation:
 shopify-admin pull --output ./backup
 
 # Or explicitly specify components
-shopify-admin pull --components=theme,pages,files,menus,metaobjects,products,collections,blogs --output ./backup
+shopify-admin pull --components=theme,pages,files,menus,metaobjects,products,collections,blogs,redirects --output ./backup
 
 # Pull specific components
-shopify-admin pull --components=pages,menus,products,collections,blogs --output ./backup
+shopify-admin pull --components=pages,menus,products,collections,blogs,redirects --output ./backup
 
 # Push all components (default behavior - no --components needed)
 shopify-admin push --input ./backup --mirror --dry-run
 shopify-admin push --input ./backup --mirror
 
 # Or explicitly specify components
-shopify-admin push --components=theme,pages,files,menus,metaobjects,products,collections,blogs --input ./backup --mirror
+shopify-admin push --components=theme,pages,files,menus,metaobjects,products,collections,blogs,redirects --input ./backup --mirror
 
 # Push specific components
-shopify-admin push --components=pages,files,products,collections,blogs --input ./backup
+shopify-admin push --components=pages,files,products,collections,blogs,redirects --input ./backup
 ```
 
 Features:
-- Default components: `theme,files,pages,menus,metaobjects,products,collections,blogs` (pulls/pushes all when --components not specified)
-- Available components: `theme,files,pages,menus,metaobjects,products,collections,blogs`
+- Default components: `theme,files,pages,menus,metaobjects,products,collections,blogs,redirects` (pulls/pushes all when --components not specified)
+- Available components: `theme,files,pages,menus,metaobjects,products,collections,blogs,redirects`
 - Orchestrates operations across all specified components
-- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`, products in `output/products/`, collections in `output/collections/`, blogs in `output/blogs/`
+- Files stored in `output/files/`, pages in `output/pages/`, menus in `output/menus/`, themes in `output/themes/[ThemeName]/`, metaobjects in `output/metaobjects/`, products in `output/products/`, collections in `output/collections/`, blogs in `output/blogs/`, redirects in `output/redirects/`
 - Supports all standard options: `--dry-run`, `--mirror`, credentials
 - Processes components sequentially with clear progress output
 - Stops on first error for safety
@@ -292,78 +224,50 @@ Note: Theme operations always use the published theme when using multi-component
 ### CI/CD Pipeline Example
 
 ```bash
-# Authenticate using environment variables
+# Set credentials via environment variables
 export SHOPIFY_STORE_DOMAIN="your-store.myshopify.com"
 export SHOPIFY_ACCESS_TOKEN="${SECRET_TOKEN}"
 
 # Multi-component deployment (recommended)
-shopify-admin push --components=theme,pages,files,metaobjects,products,collections --input ./backup --mirror
+shopify-admin push --input ./backup --mirror
 
-# Or deploy individually:
-# Deploy themes to published theme
-shopify-admin themes push --published --input ./backup --mirror
-
-# Or deploy to specific theme
-shopify-admin themes push --name "Production" --input ./themes --mirror
-
-# Deploy pages
-shopify-admin pages push --input ./pages --mirror
-
-# Deploy metaobjects
-shopify-admin metaobjects push --input ./metaobjects --mirror
-
-# Deploy products
-shopify-admin products push --input ./products --mirror
+# Or specific components
+shopify-admin push --components=theme,pages,products,collections --input ./backup --mirror
 ```
 
-## Safety Guidelines
+## File Formats
 
-### Mirror Mode Warning
-
-- `--mirror` will DELETE remote items not present locally
-- This is irreversible
-- Always backup first
-- Always use `--dry-run` before actual push
-
-### Recommended Practices
-
-- Always run `--dry-run` first
-- Test on development theme/store before production
-- Keep backups of current state
-- Use version control for all files
-- Review dry-run output carefully before proceeding
-
-## Page File Format
-
-Pages are stored as HTML files with minimal metadata:
-
+### Pages
+HTML files with optional metadata comment:
 ```html
 <!-- Page: Contact | Template: contact -->
-
 <h1>Contact Us</h1>
-<p>Your page content here...</p>
 ```
 
-- The template suffix is optional
-- No auto-generated metadata (IDs, timestamps) for GitOps compatibility
-- Page handle is derived from filename: `contact.html` → handle: `contact`
+### JSON Resources (Products, Collections, Blogs, Redirects, Metaobjects)
+Each resource has two files:
+- `resource-name.json` - Content data
+- `resource-name.json.meta` - ID, handle, and metadata (YAML format)
 
+## Safety Best Practices
+
+1. Always use `--dry-run` first to preview changes
+1. `--mirror` mode DELETES remote items not present locally (irreversible)
+1. Test on development store/theme before production
+1. Keep backups and use version control
+1. Review dry-run output carefully before proceeding
+
+## Troubleshooting
 
 ### Authentication Issues
-
 - Verify access token starts with `shpat_`
-- Ensure private app is installed
-- Check required scopes are enabled
+- Ensure private app is installed with required scopes
 - Use format: `your-store.myshopify.com`
 
-### Environment Variables
-
+### Check Environment Variables
 ```bash
-# Check current values
 echo $SHOPIFY_STORE_DOMAIN $SHOPIFY_ACCESS_TOKEN
-
-# Re-export if needed
-source ./.env/dev.sh
+source ./.env/dev.sh  # Re-export if needed
 ```
 
 ## Command Reference
