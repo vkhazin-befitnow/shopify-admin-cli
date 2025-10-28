@@ -272,14 +272,17 @@ export abstract class BaseResourceCommand<TResource, TMetadata> {
 
         for (let i = 0; i < resources.length; i++) {
             const resource = resources[i];
-            const handle = this.getResourceHandle(resource);
-            Logger.progress(
-                i + 1,
-                resources.length,
-                `Downloading ${handle}${this.getFileExtension()}`
-            );
-
+            let handle = `resource-${i}`;
+            
             try {
+                handle = this.getResourceHandle(resource);
+                
+                Logger.progress(
+                    i + 1,
+                    resources.length,
+                    `Downloading ${handle}${this.getFileExtension()}`
+                );
+
                 await RetryUtility.withRetry(
                     async () => {
                         await this.downloadSingleResource(resource, outputPath);
@@ -342,10 +345,13 @@ export abstract class BaseResourceCommand<TResource, TMetadata> {
 
         for (let i = 0; i < resources.length; i++) {
             const resource = resources[i];
-            const handle = this.getResourceHandle(resource);
-            Logger.progress(i + 1, resources.length, `Deleting ${handle}`);
-
+            let handle = `resource-${i}`;
+            
             try {
+                handle = this.getResourceHandle(resource);
+                
+                Logger.progress(i + 1, resources.length, `Deleting ${handle}`);
+
                 await RetryUtility.withRetry(
                     () => this.deleteSingleResource(site, accessToken, resource),
                     SHOPIFY_API.RETRY_CONFIG

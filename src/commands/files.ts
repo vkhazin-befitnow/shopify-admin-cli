@@ -208,14 +208,26 @@ export class ShopifyFiles extends BaseResourceCommand<FileNode, FileMetadata> {
         }
 
         if (!url) {
+            if (!file.id) {
+                return 'file-unknown';
+            }
             const idParts = file.id.split('/');
             return `file-${idParts[idParts.length - 1]}`;
         }
 
         const urlParts = url.split('/');
         const fileNameWithParams = urlParts[urlParts.length - 1];
+        
+        if (!fileNameWithParams) {
+            if (!file.id) {
+                return 'file-unknown';
+            }
+            const idParts = file.id.split('/');
+            return `file-${idParts[idParts.length - 1]}`;
+        }
+        
         const fileName = fileNameWithParams.split('?')[0];
-        return fileName || `file-${file.id}`;
+        return fileName || (file.id ? `file-${file.id}` : 'file-unknown');
     }
 
     extractMetadata(file: FileNode): FileMetadata {
