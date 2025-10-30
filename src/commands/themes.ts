@@ -95,7 +95,9 @@ export class ShopifyThemes {
             }
         }
 
-        const finalOutputPath = IOUtility.buildResourcePath(outputPath, 'themes', theme.name);
+        // Use "published" as folder name when --published flag is used, otherwise use actual theme name
+        const themeFolderName = published ? 'published' : theme.name;
+        const finalOutputPath = IOUtility.buildResourcePath(outputPath, 'themes', themeFolderName);
         dryRunManager.logAction('pull', `theme "${theme.name}" (ID: ${theme.id}) to: ${finalOutputPath}`);
 
         let assets = await this.fetchThemeAssets(site, accessToken, theme.id);
@@ -169,7 +171,9 @@ export class ShopifyThemes {
             }
         }
 
-        const themeFolder = IOUtility.prepareResourcePath(inputPath, 'themes', theme.name);
+        // Use "published" as folder name when --published flag is used, otherwise use actual theme name
+        const themeFolderName = published ? 'published' : theme.name;
+        const themeFolder = IOUtility.prepareResourcePath(inputPath, 'themes', themeFolderName);
         dryRunManager.logAction('push', `local theme files from "${themeFolder}" to theme "${theme.name}" (ID: ${theme.id})`);
 
         const localFiles = this.collectLocalThemeFiles(themeFolder);

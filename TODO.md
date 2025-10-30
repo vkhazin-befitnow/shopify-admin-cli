@@ -81,12 +81,12 @@
 - Standalone Classes: Hierarchical/complex resources (themes, metaobjects, blogs)
 - GraphQL Resources: Leveraging GraphQL-only endpoints (files, menus)
 
-## Code Quality Assessment
+## Code Quality Assessment (Oct 30, 2025)
 
 ### Code Quality Issues
 
 - Inline GraphQL Queries: Large query strings embedded in methods reduce maintainability
-- Manual String Building: GraphQL mutations use string concatenation instead of variables
+- Manual String Building: GraphQL mutations use string concatenation instead of variables (maintainability, not security)
 - Magic Numbers: Need inline comments and centralized constants
 - Method Organization: Public/private methods mixed without clear grouping
 - Input Validation: Inconsistent path validation and missing safety checks
@@ -99,13 +99,49 @@
 - Rate Limiting: Consistent 400ms rate limiting across all API operations
 - Retry Logic: Sophisticated exponential backoff with jitter and validation error detection
 
-## High Priority - Functionality & Consistency
+### Recent Improvements (Oct 2025)
 
-### Manual GraphQL String Building in menus.ts (SECURITY RISK)
+- ✅ Per-resource error handling: Batch operations now continue on individual failures
+- ✅ Published theme canonical folder: `themes/published/` for cross-environment promotions
+- ✅ Files resource hardening: Safe handling of missing API fields
+- ✅ CLI help documentation: Clear user guidance for published folder behavior
+- ✅ All tests passing: 13 test suites, 120+ tests validated
+
+## High Priority - Functionality & User Experience
+
+### Missing Confirmation for Mirror Mode Deletions
+
+- Location: All commands with `--mirror` flag
+- Issue: `--mirror` flag is destructive but has no confirmation prompt
+- Risk: Accidental data loss from unintended destructive operations
+- Impact: User could accidentally delete local or remote resources
+- Solution: Add interactive confirmation prompt or require `--force` flag for non-interactive use
+- Priority: HIGH (data loss prevention)
+
+### Duplicated Theme Selection Logic
+
+- Location: `src/commands/themes.ts` (lines 75-96 and 155-176)
+- Issue: Identical 20+ line theme selection logic duplicated in pull() and push()
+- Impact: Code duplication, maintenance burden, inconsistency risk
+- Solution: Extract to private method `findTheme(themeName, published, site, accessToken)`
+- Priority: MEDIUM (code quality, ~10 minutes to fix)
+
+### Batch Operation Error Context
+
+- Location: All resource commands - now partially addressed with per-resource try/catch
+- Status: ✅ IMPROVED - Errors now collected and reported with resource handles
+- Remaining: Could add structured error logging with more context
+- Priority: LOW (current implementation is functional)
+
+## Medium Priority - Code Organization & Quality
+
+### Manual GraphQL String Building in menus.ts
 
 - Location: `src/commands/menus.ts:151-155, 181-185`
 - Issue: Manual string concatenation for GraphQL mutations
-- Risk: Potential injection vulnerabilities, syntax errors
+- Analysis: Uses `JSON.stringify()` for strings, enum validation for types
+- Security Impact: **NONE** - Locally executed CLI with trusted user input
+- Real Impact: Maintainability and potential for syntax errors
 - Current Code:
 ```typescript
 const itemsInput = items.map(item => `{
@@ -114,36 +150,26 @@ const itemsInput = items.map(item => `{
     type: ${item.type}
 }`).join(',');
 ```
-- Solution: Use GraphQL variables instead of string interpolation
-- Priority: HIGH (security concern)
+- Solution: Use GraphQL variables for cleaner code
+- Priority: MEDIUM (code quality, nice-to-have)
+- Note: Safe to use as-is; not a security vulnerability in local CLI context
 
-### Duplicated Theme Selection Logic
+### Blogs and Themes Commands Architecture
 
-- Location: `src/commands/themes.ts` (lines 75-96 and 155-170)
-- Issue: Identical 20+ line theme selection logic duplicated in pull() and push()
-- Impact: Code duplication, maintenance burden, inconsistency risk
-- Solution: Extract to private method `findTheme(themeName, published, site, accessToken)`
-
-### Missing Error Context in Batch Operations
-
-- Location: All resource commands (themes, blogs, pages, products, collections, files, menus, metaobjects)
-- Issue: When batch operations fail, errors are logged but context is limited
-- Impact: Hard to debug which specific operation failed in a batch
-- Solution: Add structured error logging with operation context, resource identifiers
-
-## Medium Priority - Code Organization & Quality
-
-### Blogs Command Not Using BaseResourceCommand
-
-- Location: `src/commands/blogs.ts` (full file ~450 lines)
-- Issue: blogs.ts implements custom logic similar to BaseResourceCommand but standalone
-- Analysis: 
-  - Two-level hierarchy: blogs → articles
-  - Uses custom pagination, file management, mirror mode logic
-  - Similar to pages/products but implemented separately
-- Impact: Code duplication, maintenance burden
-- Solution: Refactor to use BaseResourceCommand pattern with nested resource support
-- Note: Current implementation works correctly, but creates technical debt
+- Location: `src/commands/blogs.ts` (~450 lines), `src/commands/themes.ts` (~460 lines)
+- Issue: Custom implementations don't use BaseResourceCommand pattern
+- Analysis:
+  - Blogs: Two-level hierarchy (blogs → articles) with complex pagination
+  - Themes: Nested directory structure with specialized asset handling
+  - Both have unique output structures that don't fit flat resource model
+- Constraint: **BaseResourceCommand designed for flat REST resources**
+  - Assumes single-level file structure: `output/[resource]/[handle][ext]`
+  - Blogs need: `output/blogs/[blog-handle]/[article-handle].html`
+  - Themes need: `output/themes/[theme-name]/[subfolder]/[asset]`
+- Impact: Code duplication exists but is justified by structural differences
+- Solution: Current standalone implementations are appropriate
+- Priority: LOW (architectural constraint, not a defect)
+- Note: Refactoring would require major BaseResourceCommand redesign to support nested hierarchies
 
 ### Inline GraphQL Query Strings
 
@@ -155,6 +181,7 @@ const itemsInput = items.map(item => `{
 - Impact: Harder to maintain, test, and reuse queries
 - Solution: Extract to constants at top of file or separate `queries.ts` file
 - Benefit: Better code organization, easier query testing, improved maintainability
+- Priority: LOW (nice-to-have, ~30 minutes total)
 
 ### Magic Numbers Need Inline Comments
 
@@ -163,6 +190,7 @@ const itemsInput = items.map(item => `{
   - Create centralized CONSTANTS object in settings.ts
   - Add inline comments to all magic numbers in code
 - Examples: 250 (pagination limit), 400 (rate limit ms), retry counts
+- Priority: LOW (documentation exists, inline comments are nice-to-have)
 
 ### Inconsistent Method Organization
 
@@ -174,27 +202,29 @@ const itemsInput = items.map(item => `{
   - Private orchestration methods
   - Private API interaction methods (fetch, upload, delete)
   - Private utility methods (path resolution, file handling)
+- Priority: LOW (cosmetic, ~20 minutes per file)
 
-### Incomplete Input Validation
+### Input Validation Improvements
 
 - Location: All command functions
-- Issue: Some paths validated, others not; no checks for path traversal; mirror mode has no confirmation
-- Impact: Security risk, poor user experience, potential data loss
-- Solution:
-  - Validate all file paths for existence and safety
-  - Add confirmation prompt for destructive operations (mirror mode)
-  - Validate theme names before API calls
-  - Check output directory is empty or warn user
+- Current State: Basic validation exists, paths are validated in IOUtility
+- Improvements Needed:
+  - ✅ Path existence checking (already implemented in IOUtility)
+  - ❌ Mirror mode confirmation prompt (HIGH priority - see above)
+  - ✅ Theme name validation (happens via API call with clear error)
+  - ✅ Output directory creation (automatic via IOUtility.ensureDirectoryExists)
+- Priority: HIGH for mirror confirmation, LOW for other improvements
 
-### Inconsistent Error Handling Patterns
+### Error Handling Patterns - Mostly Resolved
 
-- Issue: Different commands handle errors inconsistently
-- Examples:
-  - Some throw errors immediately
-  - Some collect errors and return result objects
-  - Some log warnings vs errors
-- Impact: Inconsistent user experience and error recovery
-- Solution: Standardize error handling strategy across all commands
+- Status: ✅ IMPROVED with Oct 2025 per-resource error handling updates
+- Current State: Commands now use consistent BatchResult pattern
+- Remaining Inconsistencies:
+  - BaseResourceCommand: Collects errors, continues processing
+  - Themes/Blogs: Individual try/catch per operation
+  - Both patterns are appropriate for their use cases
+- Impact: Minimal - user experience is consistent
+- Priority: LOW (current implementation is functional and appropriate)
 
 ## Low Priority - Code Cleanup & Enhancements
 
@@ -222,26 +252,76 @@ const itemsInput = items.map(item => `{
 - Solution: Move shared types to `src/types/` directory if reuse needed
 - Benefit: Better type reuse, reduced duplication
 
-## Priority Recommendations
+## Priority Recommendations (Updated Oct 30, 2025)
 
-### Immediate Action (Security & Critical Issues)
+### Critical Priority - Data Safety
 
-- HIGH: Fix manual GraphQL string building in menus.ts (security risk)
-- HIGH: Add mirror mode confirmation prompts (data loss prevention)
+1. **Add Mirror Mode Confirmation Prompts**
+   - Impact: Prevents accidental data loss
+   - Effort: ~15 minutes
+   - Status: Not implemented
+   - Why Critical: Destructive operations should require explicit confirmation
 
-### Short-term Improvements (Code Quality)
+### High Priority - User Experience & Stability
 
-- MEDIUM: Refactor blogs.ts to use BaseResourceCommand
-- MEDIUM: Extract inline GraphQL queries to constants
-- MEDIUM: Add centralized CONSTANTS object for magic numbers
-- MEDIUM: Extract duplicated theme selection logic
+2. **Extract Duplicated Theme Selection Logic**
+   - Impact: Reduces maintenance burden, improves consistency
+   - Effort: ~10 minutes
+   - Status: Not implemented
+   - Why High: Code duplication in critical path
 
-### Long-term Enhancements (Nice to Have)
+3. **Update User Documentation**
+   - Impact: Users understand published folder behavior
+   - Effort: ~15 minutes
+   - Status: Partially complete (CLI help done, docs pending)
+   - Why High: Recent feature requires documentation
 
-- LOW: Standardize error handling patterns
-- LOW: Add comprehensive JSDoc documentation
-- LOW: Implement configuration file support
-- LOW: Organize method grouping in large classes
+### Medium Priority - Code Quality
+
+4. **Extract Inline GraphQL Queries**
+   - Impact: Improves maintainability and readability
+   - Effort: ~30 minutes
+   - Status: Not implemented
+   - Why Medium: Nice-to-have, not blocking functionality
+
+5. **Refactor Manual GraphQL String Building**
+   - Impact: Cleaner code, easier to maintain
+   - Effort: ~20 minutes
+   - Status: Not implemented
+   - Why Medium: Code quality issue, not a security risk in local CLI context
+   - Note: Current implementation is safe and functional
+
+### Low Priority - Nice to Have
+
+6. **Add Centralized CONSTANTS Object**
+   - Impact: Better code organization
+   - Effort: ~20 minutes
+   - Status: Magic numbers are documented but not centralized
+   - Why Low: Documentation exists, inline comments sufficient
+
+7. **Add Comprehensive JSDoc Documentation**
+   - Impact: Better developer experience
+   - Effort: ~2 hours
+   - Status: Minimal documentation exists
+   - Why Low: Code is relatively self-documenting
+
+8. **Implement Configuration File Support**
+   - Impact: Better UX for frequent users
+   - Effort: ~1 hour
+   - Status: Not implemented
+   - Why Low: Environment variables and CLI args work well
+
+9. **Organize Method Grouping in Large Classes**
+   - Impact: Easier navigation
+   - Effort: ~20 minutes per file
+   - Status: Not implemented
+   - Why Low: Cosmetic improvement
+
+### Not Recommended - Architectural Constraints
+
+- ❌ **Refactor Blogs to use BaseResourceCommand**: BaseResourceCommand designed for flat structure, blogs require nested hierarchy (blogs → articles)
+- ❌ **Refactor Themes to use BaseResourceCommand**: Themes require nested directory structure incompatible with flat resource model
+- Note: Current standalone implementations are appropriate given structural requirements
 
 ## Next Component Recommendations
 

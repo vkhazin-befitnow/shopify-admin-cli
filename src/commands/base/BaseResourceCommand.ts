@@ -273,10 +273,10 @@ export abstract class BaseResourceCommand<TResource, TMetadata> {
         for (let i = 0; i < resources.length; i++) {
             const resource = resources[i];
             let handle = `resource-${i}`;
-            
+
             try {
                 handle = this.getResourceHandle(resource);
-                
+
                 Logger.progress(
                     i + 1,
                     resources.length,
@@ -346,10 +346,10 @@ export abstract class BaseResourceCommand<TResource, TMetadata> {
         for (let i = 0; i < resources.length; i++) {
             const resource = resources[i];
             let handle = `resource-${i}`;
-            
+
             try {
                 handle = this.getResourceHandle(resource);
-                
+
                 Logger.progress(i + 1, resources.length, `Deleting ${handle}`);
 
                 await RetryUtility.withRetry(

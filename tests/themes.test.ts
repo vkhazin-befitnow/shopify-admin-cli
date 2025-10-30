@@ -145,21 +145,18 @@ describe('Shopify Themes', () => {
         // Pull published theme with limited assets for testing
         await themes.pull(null, testOutputPath, creds.site, creds.accessToken, 3, false, false, true);
 
-        // Verify theme folder structure: output/themes/[ThemeName]/
+        // Verify theme folder structure: output/themes/published/
         const themesDir = path.join(testOutputPath, 'themes');
         assert.ok(fs.existsSync(themesDir), 'Should create themes directory');
-        
-        const publishedThemeFolders = fs.readdirSync(themesDir);
-        assert.ok(publishedThemeFolders.length > 0, 'Should create theme subfolder');
-        
-        // The published theme name folder should be created automatically
-        const themeFolder = path.join(themesDir, publishedThemeFolders[0]);
-        assert.ok(fs.existsSync(themeFolder), 'Theme subfolder should exist');
+
+        // When using --published flag, the folder should be named 'published'
+        const publishedThemeFolder = path.join(themesDir, 'published');
+        assert.ok(fs.existsSync(publishedThemeFolder), 'Should create themes/published folder');
 
         // Verify standard Shopify theme directories
         const expectedDirs = ['assets', 'config', 'layout', 'locales', 'sections', 'snippets', 'templates'];
         expectedDirs.forEach(dir => {
-            const dirPath = path.join(themeFolder, dir);
+            const dirPath = path.join(publishedThemeFolder, dir);
             assert.ok(fs.existsSync(dirPath), `Should create ${dir} directory`);
         });
     });
