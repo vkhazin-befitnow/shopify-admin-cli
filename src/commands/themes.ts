@@ -210,14 +210,16 @@ export class ShopifyThemes {
             return;
         }
 
+        // Delete remote files first in mirror mode to avoid conflicts
+        // (e.g., can't have both 404.liquid and 404.json)
+        if (mirror && toDelete.length > 0) {
+            await this.deleteAssets(site, accessToken, theme.id, toDelete);
+        }
+
         if (localFiles.length > 0) {
             await this.uploadAssets(site, accessToken, theme.id, localFiles);
         } else {
             Logger.info('No files to upload');
-        }
-
-        if (mirror && toDelete.length > 0) {
-            await this.deleteAssets(site, accessToken, theme.id, toDelete);
         }
 
         Logger.success(`Successfully pushed theme "${theme.name}"`);

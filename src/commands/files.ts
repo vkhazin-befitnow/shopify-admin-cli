@@ -28,11 +28,9 @@ interface FileNode {
 }
 
 interface FileMetadata {
-    id: string;
     alt?: string;
-    createdAt: string;
-    fileStatus: string;
-    contentType: 'IMAGE' | 'VIDEO' | 'FILE';
+    // Note: Other fields (id, createdAt, fileStatus, contentType) are store-specific
+    // or derivable from filename, so not stored in metadata for GitOps workflows
 }
 
 interface FilesQueryResponse {
@@ -232,11 +230,8 @@ export class ShopifyFiles extends BaseResourceCommand<FileNode, FileMetadata> {
 
     extractMetadata(file: FileNode): FileMetadata {
         return {
-            id: file.id,
-            alt: file.alt,
-            createdAt: file.createdAt,
-            fileStatus: file.fileStatus,
-            contentType: this.determineContentType(file)
+            alt: file.alt
+            // Only store alt text - other fields are store-specific or derivable
         };
     }
 
@@ -280,21 +275,10 @@ export class ShopifyFiles extends BaseResourceCommand<FileNode, FileMetadata> {
         accessToken: string,
         file: LocalFile<FileMetadata>
     ): Promise<void> {
-        const mutation = file.metadata?.id ? `
-            mutation fileUpdate($files: [FileUpdateInput!]!) {
-                fileUpdate(files: $files) {
-                    files {
-                        id
-                        alt
-                        createdAt
-                    }
-                    userErrors {
-                        field
-                        message
-                    }
-                }
-            }
-        ` : `
+        // Always use fileCreate for uploads
+        // Note: IDs from metadata are store-specific and invalid when pushing across stores
+        // Shopify will handle duplicate detection based on filename/URL
+        const mutation = `
             mutation fileCreate($files: [FileCreateInput!]!) {
                 fileCreate(files: $files) {
                     files {
@@ -330,10 +314,10 @@ export class ShopifyFiles extends BaseResourceCommand<FileNode, FileMetadata> {
             'files'
         );
 
-        const result = file.metadata?.id ? data.fileUpdate : data.fileCreate;
+        const result = data.fileCreate;
 
         if (result && result.userErrors && result.userErrors.length > 0) {
-            throw new Error(`Failed to upload file '${file.handle}'${file.metadata?.id ? ' (update)' : ' (create)'}: ${result.userErrors.map(e => e.message).join(', ')}`);
+            throw new Error(`Failed to upload file '${file.handle}': ${result.userErrors.map(e => e.message).join(', ')}`);
         }
     }
 
