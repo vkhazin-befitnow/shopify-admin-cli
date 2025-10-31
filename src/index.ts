@@ -50,7 +50,7 @@ themesCommand
   .addHelpText('after', '\nNote: when --published is used the theme files are stored under themes/published/ to provide a canonical location for promoted (published) themes.\n')
   .requiredOption('--output <path>', 'Output directory path')
   .option('--dry-run', 'Show what would be changed without making actual changes')
-  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (DESTRUCTIVE - run with --dry-run first to preview)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
@@ -81,7 +81,7 @@ themesCommand
   .addHelpText('after', '\nNote: when --published is used the CLI will read files from themes/published/ to target the store\'s published theme.\n')
   .requiredOption('--input <path>', 'Input directory path containing theme files')
   .option('--dry-run', 'Show what would be changed without making actual changes')
-  .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
+  .option('--mirror', 'Mirror mode: delete remote files not present locally (DESTRUCTIVE - run with --dry-run first to preview)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
@@ -351,7 +351,7 @@ program
   .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects')
   .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
-  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (DESTRUCTIVE - run with --dry-run first to preview)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
@@ -468,7 +468,7 @@ program
   .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects')
   .option('--theme-name <name>', 'Theme name to upload to (required if pushing theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
-  .option('--mirror', 'Mirror mode: delete remote files not present locally (destructive)')
+  .option('--mirror', 'Mirror mode: delete remote files not present locally (DESTRUCTIVE - run with --dry-run first to preview)')
   .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {

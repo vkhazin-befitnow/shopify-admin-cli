@@ -591,10 +591,12 @@ export class ShopifyMetaobjects {
             }
         }
 
-        const fields = Object.entries(content).map(([key, value]) => ({
-            key,
-            value: String(value)
-        }));
+        const fields = Object.entries(content)
+            .filter(([key, value]) => value !== null)
+            .map(([key, value]) => ({
+                key,
+                value: String(value)
+            }));
 
         const mutation = `
             mutation UpsertMetaobject($handle: MetaobjectHandleInput!, $metaobject: MetaobjectUpsertInput!) {
