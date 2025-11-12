@@ -20,6 +20,8 @@ export const SHOPIFY_API = {
     PAGE_BY_ID: (pageId: number) => `pages/${pageId}.json`,
     REDIRECTS: 'redirects.json',
     REDIRECT_BY_ID: (redirectId: number) => `redirects/${redirectId}.json`,
+    WEBHOOKS: 'webhooks.json',
+    WEBHOOK_BY_ID: (webhookId: number) => `webhooks/${webhookId}.json`,
     GRAPHQL: 'graphql.json'
   },
   RETRY_CONFIG: {

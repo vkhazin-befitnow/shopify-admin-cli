@@ -1,7 +1,7 @@
 import { RetryUtility } from './retry';
 import { SHOPIFY_API } from '../settings';
 
-export type ResourceType = 'themes' | 'pages' | 'files' | 'menus' | 'products' | 'redirects';
+export type ResourceType = 'themes' | 'pages' | 'files' | 'menus' | 'products' | 'redirects' | 'webhooks';
 
 /**
  * Shared HTTP client for making requests to Shopify APIs

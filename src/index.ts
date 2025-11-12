@@ -11,6 +11,7 @@ import { productsPullCommand, productsPushCommand } from './commands/products';
 import { collectionsPullCommand, collectionsPushCommand } from './commands/collections';
 import { blogsPullCommand, blogsPushCommand } from './commands/blogs';
 import { redirectsPullCommand, redirectsPushCommand } from './commands/redirects';
+import { webhooksPullCommand, webhooksPushCommand } from './commands/webhooks';
 
 import { CLI_VERSION } from './settings';
 import { Logger } from './utils/logger';
@@ -344,11 +345,41 @@ redirectsCommand
     await redirectsPushCommand(options);
   });
 
+const webhooksCommand = program
+  .command('webhooks')
+  .description('Webhook subscription management commands')
+  .addHelpCommand(false);
+
+webhooksCommand
+  .command('pull')
+  .description('Download webhooks from Shopify store')
+  .requiredOption('--output <path>', 'Output directory path')
+  .option('--max-webhooks <number>', 'Maximum number of webhooks to download (for testing)', parseInt)
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await webhooksPullCommand(options);
+  });
+
+webhooksCommand
+  .command('push')
+  .description('Upload local webhooks to Shopify store')
+  .requiredOption('--input <path>', 'Input directory path containing webhook files')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete remote webhooks not present locally (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await webhooksPushCommand(options);
+  });
+
 program
   .command('pull')
   .description('Pull all or specified components from Shopify store')
   .requiredOption('--output <path>', 'Output directory path')
-  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects')
+  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks')
   .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (DESTRUCTIVE - run with --dry-run first to preview)')
@@ -356,7 +387,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects', 'webhooks'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -447,6 +478,14 @@ program
             site: options.site,
             accessToken: options.accessToken
           });
+        } else if (component === 'webhooks') {
+          await webhooksPullCommand({
+            output: options.output,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
         }
         Logger.success(`${component} pull completed`);
       } catch (error) {
@@ -465,7 +504,7 @@ program
   .command('push')
   .description('Push all or specified components to Shopify store')
   .requiredOption('--input <path>', 'Input directory path')
-  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects')
+  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks')
   .option('--theme-name <name>', 'Theme name to upload to (required if pushing theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete remote files not present locally (DESTRUCTIVE - run with --dry-run first to preview)')
@@ -473,7 +512,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects', 'webhooks'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -558,6 +597,14 @@ program
           });
         } else if (component === 'redirects') {
           await redirectsPushCommand({
+            input: options.input,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
+        } else if (component === 'webhooks') {
+          await webhooksPushCommand({
             input: options.input,
             dryRun: options.dryRun || false,
             mirror: options.mirror || false,
