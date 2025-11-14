@@ -68,7 +68,7 @@ describe('Shopify Webhooks', () => {
 
         // Check that JSON files were downloaded
         const jsonFiles = fs.readdirSync(actualWebhooksPath).filter(file => file.endsWith('.json') && !file.endsWith('.meta'));
-        
+
         if (jsonFiles.length > 0) {
             assert.ok(jsonFiles.length <= 3, 'Should respect the limit of 3 webhooks');
 
@@ -193,7 +193,7 @@ describe('Shopify Webhooks', () => {
         fs.mkdirSync(actualWebhooksPath, { recursive: true });
 
         const testWebhookPath = path.join(actualWebhooksPath, 'products-create.json');
-        fs.writeFileSync(testWebhookPath, JSON.stringify({ 
+        fs.writeFileSync(testWebhookPath, JSON.stringify({
             address: 'https://example.com/webhooks/products',
             topic: 'products/create',
             format: 'json'
@@ -231,7 +231,7 @@ describe('Shopify Webhooks', () => {
         });
 
         const actualWebhooksPath = path.join(testWebhooksPath, 'webhooks');
-        
+
         if (!fs.existsSync(actualWebhooksPath)) {
             console.log('No webhooks to test with - skipping update test');
             return;
@@ -312,7 +312,7 @@ describe('Shopify Webhooks', () => {
         fs.mkdirSync(actualWebhooksPath, { recursive: true });
 
         const testWebhookPath = path.join(actualWebhooksPath, 'orders-create.json');
-        fs.writeFileSync(testWebhookPath, JSON.stringify({ 
+        fs.writeFileSync(testWebhookPath, JSON.stringify({
             address: 'https://example.com/webhooks/orders',
             topic: 'orders/create',
             format: 'json'
@@ -352,7 +352,7 @@ describe('Shopify Webhooks', () => {
         const actualWebhooksPath = path.join(testWebhooksPath, 'webhooks');
         fs.mkdirSync(actualWebhooksPath, { recursive: true });
 
-        const testWebhookContent = { 
+        const testWebhookContent = {
             address: 'https://example.com/webhooks/test',
             topic: 'products/update',
             format: 'json'
@@ -389,7 +389,7 @@ describe('Shopify Webhooks', () => {
         };
 
         const handle = webhooks.getResourceHandle(testWebhook);
-        
+
         // Handle should be the topic with slashes replaced with dashes
         assert.strictEqual(handle, 'products-create', 'Handle should be generated from topic correctly');
 

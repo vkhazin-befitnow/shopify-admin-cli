@@ -22,6 +22,8 @@ export const SHOPIFY_API = {
     REDIRECT_BY_ID: (redirectId: number) => `redirects/${redirectId}.json`,
     WEBHOOKS: 'webhooks.json',
     WEBHOOK_BY_ID: (webhookId: number) => `webhooks/${webhookId}.json`,
+    METAFIELDS: 'metafields.json',
+    METAFIELD_BY_ID: (metafieldId: number) => `metafields/${metafieldId}.json`,
     GRAPHQL: 'graphql.json'
   },
   RETRY_CONFIG: {

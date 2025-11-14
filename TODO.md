@@ -4,9 +4,9 @@
 
 | Status | Count | Components |
 |--------|-------|------------|
-| **Completed** | 10 | Themes, Files, Pages, Menus, Metaobjects, Products, Collections, Blogs, Redirects, Webhooks |
+| **Completed** | 11 | Themes, Files, Pages, Menus, Metaobjects, Products, Collections, Blogs, Redirects, Webhooks, Metafields |
 | **Not Possible** | 3 | Store Settings (read-only), Policies (read-only), Scripts (API not found) |
-| **Pending** | 17 | See implementation priorities below |
+| **Pending** | 16 | See implementation priorities below |
 
 ## Components to Implement
 
@@ -14,7 +14,6 @@
 
 | Component | API Type | Technical Complexity | Notes |
 |-----------|----------|---------------------|-------|
-| **Metafields** | REST/GraphQL | Medium | Custom data on resources |
 | **DiscountNodes** | GraphQL | High | Modern discount system |
 | **Theme Settings** | GraphQL | Medium | Theme customizer settings |
 | **Shop Locale** | GraphQL | Medium | Translation/i18n settings |

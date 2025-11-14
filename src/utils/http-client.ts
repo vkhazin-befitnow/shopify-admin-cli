@@ -1,7 +1,7 @@
 import { RetryUtility } from './retry';
 import { SHOPIFY_API } from '../settings';
 
-export type ResourceType = 'themes' | 'pages' | 'files' | 'menus' | 'products' | 'redirects' | 'webhooks';
+export type ResourceType = 'themes' | 'pages' | 'files' | 'menus' | 'products' | 'redirects' | 'webhooks' | 'metafields';
 
 /**
  * Shared HTTP client for making requests to Shopify APIs
@@ -69,7 +69,8 @@ export class HttpClient {
             'files': '. Ensure your app has read_files and write_files scopes',
             'menus': '. Ensure your app has read_online_store_navigation and write_online_store_navigation scopes',
             'products': '. Ensure your app has read_products and write_products scopes',
-            'redirects': '. Ensure your app has read_content and write_content scopes'
+            'redirects': '. Ensure your app has read_content and write_content scopes',
+            'metafields': '. Ensure your app has read_metafields and write_metafields scopes'
         };
         return scopeHints[resourceType] || '';
     }

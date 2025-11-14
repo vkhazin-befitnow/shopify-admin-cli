@@ -12,6 +12,7 @@ import { collectionsPullCommand, collectionsPushCommand } from './commands/colle
 import { blogsPullCommand, blogsPushCommand } from './commands/blogs';
 import { redirectsPullCommand, redirectsPushCommand } from './commands/redirects';
 import { webhooksPullCommand, webhooksPushCommand } from './commands/webhooks';
+import { metafieldsPullCommand, metafieldsPushCommand } from './commands/metafields';
 
 import { CLI_VERSION } from './settings';
 import { Logger } from './utils/logger';
@@ -375,11 +376,41 @@ webhooksCommand
     await webhooksPushCommand(options);
   });
 
+const metafieldsCommand = program
+  .command('metafields')
+  .description('Metafield management commands')
+  .addHelpCommand(false);
+
+metafieldsCommand
+  .command('pull')
+  .description('Download metafields from Shopify store')
+  .requiredOption('--output <path>', 'Output directory path')
+  .option('--max-metafields <number>', 'Maximum number of metafields to download (for testing)', parseInt)
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete local files not present remotely (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await metafieldsPullCommand(options);
+  });
+
+metafieldsCommand
+  .command('push')
+  .description('Upload local metafields to Shopify store')
+  .requiredOption('--input <path>', 'Input directory path containing metafield files')
+  .option('--dry-run', 'Show what would be changed without making actual changes')
+  .option('--mirror', 'Mirror mode: delete remote metafields not present locally (destructive)')
+  .option('--site <shop>', 'Shopify store domain (e.g., mystore.myshopify.com)')
+  .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
+  .action(async (options) => {
+    await metafieldsPushCommand(options);
+  });
+
 program
   .command('pull')
   .description('Pull all or specified components from Shopify store')
   .requiredOption('--output <path>', 'Output directory path')
-  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks')
+  .option('--components <list>', 'Comma-separated list of components to pull (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks,metafields)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks,metafields')
   .option('--theme-name <name>', 'Theme name to pull (if not specified, pulls published theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete local files not present remotely (DESTRUCTIVE - run with --dry-run first to preview)')
@@ -387,7 +418,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects', 'webhooks'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects', 'webhooks', 'metafields'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -486,6 +517,14 @@ program
             site: options.site,
             accessToken: options.accessToken
           });
+        } else if (component === 'metafields') {
+          await metafieldsPullCommand({
+            output: options.output,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
         }
         Logger.success(`${component} pull completed`);
       } catch (error) {
@@ -504,7 +543,7 @@ program
   .command('push')
   .description('Push all or specified components to Shopify store')
   .requiredOption('--input <path>', 'Input directory path')
-  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks')
+  .option('--components <list>', 'Comma-separated list of components to push (theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks,metafields)', 'theme,files,pages,menus,metaobjects,products,collections,blogs,redirects,webhooks,metafields')
   .option('--theme-name <name>', 'Theme name to upload to (required if pushing theme)')
   .option('--dry-run', 'Show what would be changed without making actual changes')
   .option('--mirror', 'Mirror mode: delete remote files not present locally (DESTRUCTIVE - run with --dry-run first to preview)')
@@ -512,7 +551,7 @@ program
   .option('--access-token <token>', 'Admin API access token (starts with shpat_)')
   .action(async (options) => {
     const components = options.components.split(',').map((c: string) => c.trim().toLowerCase());
-    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects', 'webhooks'];
+    const validComponents = ['theme', 'files', 'pages', 'menus', 'metaobjects', 'products', 'collections', 'blogs', 'redirects', 'webhooks', 'metafields'];
     const invalid = components.filter((c: string) => !validComponents.includes(c));
 
     if (invalid.length > 0) {
@@ -605,6 +644,14 @@ program
           });
         } else if (component === 'webhooks') {
           await webhooksPushCommand({
+            input: options.input,
+            dryRun: options.dryRun || false,
+            mirror: options.mirror || false,
+            site: options.site,
+            accessToken: options.accessToken
+          });
+        } else if (component === 'metafields') {
+          await metafieldsPushCommand({
             input: options.input,
             dryRun: options.dryRun || false,
             mirror: options.mirror || false,
